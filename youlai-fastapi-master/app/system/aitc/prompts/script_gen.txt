@@ -1,0 +1,17 @@
+请根据以下测试用例，生成 pytest 格式的自动化测试脚本。
+
+{{samples}}
+
+{{specs}}
+
+脚本编写规范以【通用规范】中内容为准。
+
+返回 JSON：
+{
+  "language": "python",
+  "framework": "pytest",
+  "script": "import pytest\\n\\ndef test_xxx():\\n    ..."
+}
+
+用例内容：
+{{case}}

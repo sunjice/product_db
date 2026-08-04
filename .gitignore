@@ -1,0 +1,61 @@
+# =============================================
+# Python / FastAPI (youlai-fastapi-master)
+# =============================================
+__pycache__/
+*.py[cod]
+*.egg-info/
+dist/
+build/
+.venv/
+.uv/
+.env
+*.egg
+!.env.example
+.pytest_cache/
+.ruff_cache/
+.mypy_cache/
+*.log
+.coverage
+htmlcov/
+coverage.xml
+uploads/
+app/alembic/versions/*.pyc
+
+# 临时测试脚本（防止调试文件带密钥提交）
+_*.py
+*_backup.py
+*_backup.json
+
+# =============================================
+# Node / Vue3 (vue3-element-admin)
+# =============================================
+node_modules/
+dist-ssr/
+stats.html
+*.local
+.env.local
+.env.*.local
+.eslintcache
+.stylelintcache
+package-lock.json
+yarn.lock
+
+# =============================================
+# Editors & OS
+# =============================================
+.idea/
+.vscode/*
+!.vscode/extensions.json
+!.vscode/settings.json
+*.suo
+*.ntvs*
+*.njsproj
+*.sln
+.DS_Store
+Thumbs.db
+.history
+
+# =============================================
+# CodeBuddy
+# =============================================
+.codebuddy/

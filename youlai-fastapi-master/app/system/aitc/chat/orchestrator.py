@@ -1,0 +1,222 @@
+"""Chat Orchestrator — 对话编排器。
+
+使用 LangChain 进行 LLM 调用和 Tool calling 编排。
+一期：关键词路由 + 简单 LLM 调用
+二期：LangChain function calling 自动路由 + 多轮工具链
+"""
+
+import hashlib
+import json
+from typing import Any, AsyncGenerator
+
+from langchain_core.messages import AIMessage, HumanMessage, SystemMessage
+from langchain_openai import ChatOpenAI
+
+from app.system.aitc.chat.intent_router import intent_router
+from app.system.aitc.chat.skill_base import skill_registry, SkillResult
+from app.system.aitc.chat.session_manager import SessionContext
+from app.system.aitc.chat.context_builder import context_builder_registry
+from app.system.aitc.chat.usage_logger import TokenMeter, LangChainTokenCallback
+
+
+# 系统提示词 — 自由对话模式
+SYSTEM_PROMPT = """你是测试部的 AI 助手，专注于帮助测试工程师管理测试用例。
+
+## 你的能力
+你可以帮助用户：
+1. **挑选核心用例** — 从项目用例中智能挑选最核心的测试用例
+2. **审核用例质量** — 检查用例的完整性、规范性、可执行性
+3. **生成测试脚本** — 为用例自动生成 pytest 自动化测试脚本
+4. **补全用例字段** — 根据标题和测试目的，补全前置条件、测试数据等
+5. **补写测试步骤** — 补写详细的测试步骤和预期结果
+6. **设计测试用例** — 根据需求描述，从零设计测试用例
+
+## 交互原则
+- 回复简洁专业，优先引导用户使用具体技能
+- 需要项目/用例信息时，优先使用 [当前页面上下文] 中已提供的数据；如上下文不足，再主动询问
+- 涉及数据修改时，先生成草稿等用户确认
+- 数学计算、代码片段使用 Markdown 格式
+"""
+
+
+class ChatOrchestrator:
+    """对话编排器 — 负责意图识别 → Skill 调度 → LLM 响应编排。"""
+
+    async def process_message(
+        self,
+        message: str,
+        context: SessionContext,
+        history: list[dict] | None = None,
+    ) -> AsyncGenerator[str, None]:
+        """处理用户消息，流式返回 SSE 事件。
+
+        处理流程:
+        1. 意图路由 → 匹配 Skill
+        2. Skill.execute() → 拿到 SkillResult
+        3. 根据 SkillResult 构造响应消息
+        4. SSE 推送
+
+        context.working 中需包含:
+        - db_session: AsyncSession
+        - ai_config: AiTcAiConfig ORM 实例
+        """
+
+        # Step 1: 意图路由
+        skill = intent_router.match(message, domain=context.domain)
+
+        if skill is None:
+            # 无匹配 → 自由对话模式
+            async for event in self._freeform_chat(message, context, history):
+                yield event
+            return
+
+        # Step 2: 提取参数
+        params = intent_router.extract_params(skill, message)
+        # 合并上下文参数
+        params["project_id"] = params.get("project_id") or context.project_id
+        params["suite_id"] = params.get("suite_id") or context.suite_id
+
+        # Step 3: 页面准入检查
+        current_page = context.context_json.get("current_page", "")
+        if skill.required_page and current_page != skill.required_page:
+            result = SkillResult(
+                success=False,
+                msg_type="clarify_card",
+                content="该功能需要在「用例管理」页面使用。请先切换到用例管理页面，再进行此操作。",
+            )
+        else:
+            # Step 4: 执行 Skill
+            result = await skill.execute(params, {
+            "session_id": context.session_id,
+            "project_id": context.project_id,
+            "suite_id": context.suite_id,
+            "domain": context.domain,
+            "context_json": context.context_json,
+            "db_session": context.get_working("db_session"),
+        })
+
+        # Step 4: 构造 SSE 事件序列
+        yield self._sse_event("skill_start", {
+            "skill_name": skill.name,
+            "mode": skill.mode.value,
+        })
+
+        yield self._sse_event("message", {
+            "role": "assistant",
+            "msg_type": result.msg_type,
+            "content": result.content,
+            "skill_name": skill.name,
+            "success": result.success,
+            "draft_type": result.draft_type,
+            "draft_data": result.draft_data,
+            "metadata": result.metadata,
+        })
+
+        if result.error and not result.content:
+            yield self._sse_event("error", {"message": result.error})
+
+        yield self._sse_event("done", {})
+
+    async def _freeform_chat(
+        self,
+        message: str,
+        context: SessionContext,
+        history: list[dict] | None = None,
+    ) -> AsyncGenerator[str, None]:
+        """自由对话模式 — 走 LangChain LLM 流式对话。"""
+        ai_config = context.get_working("ai_config")
+        if ai_config is None:
+            yield self._sse_event("message", {
+                "role": "assistant",
+                "msg_type": "text",
+                "content": "未配置 AI 服务，请在 AI 配置管理中添加配置。",
+            })
+            yield self._sse_event("done", {})
+            return
+
+        meter = TokenMeter(model=ai_config.model or "unknown")
+
+        try:
+            # 构建消息列表
+            messages = [SystemMessage(content=SYSTEM_PROMPT)]
+
+            # 上下文注入：指纹变化时注入页面上下文
+            curr_fingerprint = self._compute_fingerprint(context.domain, context.context_json)
+            if curr_fingerprint and curr_fingerprint != context.last_context_fingerprint:
+                context_block = await self._build_context_block(context)
+                if context_block:
+                    messages.append(SystemMessage(content=context_block))
+                context.last_context_fingerprint = curr_fingerprint
+
+            if history:
+                for h in history[-20:]:
+                    if h.get("role") == "user":
+                        messages.append(HumanMessage(content=h.get("content", "")))
+                    elif h.get("role") == "assistant":
+                        messages.append(AIMessage(content=h.get("content", "")))
+            messages.append(HumanMessage(content=message))
+
+            llm = ChatOpenAI(
+                model=ai_config.model,
+                api_key=ai_config.api_key,
+                base_url=ai_config.api_base,
+                temperature=ai_config.temperature or 0.3,
+                max_tokens=ai_config.max_tokens or 4096,
+                streaming=True,
+            )
+
+            callback = LangChainTokenCallback(meter)
+            full_text = ""
+
+            async for chunk in llm.astream(messages, config={"callbacks": [callback]}):
+                if chunk.content:
+                    full_text += chunk.content
+                    yield self._sse_event("chunk", {"content": chunk.content})
+
+            # 最终完整消息
+            yield self._sse_event("message", {
+                "role": "assistant",
+                "msg_type": "text",
+                "content": full_text,
+                "metadata": {
+                    "tokens": {
+                        "prompt": meter.prompt_tokens,
+                        "completion": meter.completion_tokens,
+                        "total": meter.total_tokens,
+                    },
+                    "duration_ms": meter.duration_ms,
+                },
+            })
+
+            yield self._sse_event("done", {})
+
+        except Exception as e:
+            yield self._sse_event("error", {"message": str(e)})
+            yield self._sse_event("done", {})
+
+    @staticmethod
+    def _compute_fingerprint(domain: str, context_json: dict) -> str:
+        """计算上下文字段指纹，用于判断是否需要重新注入。"""
+        if not context_json:
+            return ""
+        raw = f"{domain}:{json.dumps(context_json, sort_keys=True, default=str)}"
+        return hashlib.md5(raw.encode()).hexdigest()
+
+    async def _build_context_block(self, context: SessionContext) -> str:
+        """按 domain 调用对应的 ContextBuilder 生成上下文文本块。"""
+        builder = context_builder_registry.get(context.domain)
+        if builder is None:
+            return ""
+        db = context.get_working("db_session")
+        if db is None:
+            return ""
+        return await builder.build(context.context_json, db)
+
+    @staticmethod
+    def _sse_event(event: str, data: dict) -> str:
+        """构造 SSE 事件字符串。"""
+        return f"event: {event}\ndata: {json.dumps(data, ensure_ascii=False)}\n\n"
+
+
+# 全局单例
+chat_orchestrator = ChatOrchestrator()

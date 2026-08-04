@@ -1,0 +1,102 @@
+"""用例域 — 上下文构造器。
+
+自由对话模式下，将当前项目/模块/选中用例等信息注入 LLM system prompt。
+"""
+
+from sqlalchemy import select
+from sqlalchemy.ext.asyncio import AsyncSession
+
+from app.system.aitc.models import AiTcCase, AiTcSuite
+from app.system.aitc.chat.context_builder import BaseContextBuilder, context_builder_registry
+from app.system.aitc.chat.domains.case.tools import (
+    _get_project_name,
+    _get_suite_name,
+    _count_cases_in_suite,
+)
+
+
+class CaseContextBuilder(BaseContextBuilder):
+    """用例管理页上下文构造器。"""
+
+    domain = "case"
+
+    async def build(self, context_json: dict, db: AsyncSession) -> str:
+        project_id = context_json.get("project_id")
+        suite_id = context_json.get("suite_id")
+        selected_case_ids = context_json.get("selected_case_ids", [])
+
+        parts: list[str] = []
+
+        # 项目名
+        if project_id:
+            project_name = await _get_project_name(db, project_id)
+            parts.append(f"- 项目: {project_name or f'ID:{project_id}'}")
+
+        # 模块名 + 用例统计 + 用例列表
+        if suite_id:
+            suite_name = await _get_suite_name(db, suite_id)
+            case_count = await _count_cases_in_suite(db, suite_id)
+            parts.append(f"- 模块: {suite_name or f'ID:{suite_id}'}（{case_count} 条用例）")
+
+            # 注入模块下（含子模块）所有用例的编号和名称
+            cases = await self._get_case_list_in_suite(db, suite_id, limit=200)
+            if cases:
+                lines = "\n".join(f"  - #{case_id}: {name}" for case_id, name in cases)
+                parts.append(f"- 用例列表：\n{lines}")
+                if case_count > len(cases):
+                    parts.append(f"  （仅展示前 {len(cases)} 条）")
+
+        # 当前选中用例概览
+        if selected_case_ids:
+            count = len(selected_case_ids)
+            preview = await self._get_selected_case_names(db, selected_case_ids[:5])
+            parts.append(f"- 当前选中 {count} 条用例" + (f"，例如: {preview}" if preview else ""))
+
+        if not parts:
+            return ""
+
+        return "\n[当前页面上下文]\n" + "\n".join(parts)
+
+    @staticmethod
+    async def _get_case_list_in_suite(
+        db: AsyncSession, suite_id: int, limit: int = 200
+    ) -> list[tuple[int, str]]:
+        """获取模块及其子模块下的用例列表（编号+名称），按 ID 排序。"""
+        suite = await db.get(AiTcSuite, suite_id)
+        if suite is None or suite.is_deleted:
+            return []
+
+        prefix = f"{suite.tree_path}{suite_id},"
+        suite_rows = await db.execute(
+            select(AiTcSuite.id).where(
+                AiTcSuite.tree_path.like(f"{prefix}%"),
+                AiTcSuite.is_deleted == 0,
+            )
+        )
+        all_suite_ids = [suite_id] + [r[0] for r in suite_rows]
+
+        result = await db.execute(
+            select(AiTcCase.id, AiTcCase.name)
+            .where(
+                AiTcCase.suite_id.in_(all_suite_ids),
+                AiTcCase.is_deleted == 0,
+            )
+            .order_by(AiTcCase.id)
+            .limit(limit)
+        )
+        return [(row[0], row[1]) for row in result]
+
+    @staticmethod
+    async def _get_selected_case_names(db: AsyncSession, case_ids: list) -> str:
+        result = await db.execute(
+            select(AiTcCase.name).where(
+                AiTcCase.id.in_(case_ids),
+                AiTcCase.is_deleted == 0,
+            )
+        )
+        names = [row[0] for row in result]
+        return "、".join(names)
+
+
+case_context_builder = CaseContextBuilder()
+context_builder_registry.register(case_context_builder)

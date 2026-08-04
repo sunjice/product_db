@@ -1,0 +1,23 @@
+{
+  "version": 1,
+  "skills": {
+    "fastapi": {
+      "source": "youlaitech/youlai-skills",
+      "sourceType": "github",
+      "skillPath": "skills/fastapi/SKILL.md",
+      "computedHash": "1dffe41eadfbce1086c975116ea6ec1d3ad3535737251ea8b56ad40875a24cb7"
+    },
+    "mysql-design": {
+      "source": "youlaitech/youlai-skills",
+      "sourceType": "github",
+      "skillPath": "skills/mysql-design/SKILL.md",
+      "computedHash": "56ebf3364b0324e8bd1e69d6aa796022ed1db0030a8f4f031070bf3b7167c1ea"
+    },
+    "vue-admin": {
+      "source": "youlaitech/youlai-skills",
+      "sourceType": "github",
+      "skillPath": "skills/vue-admin/SKILL.md",
+      "computedHash": "b8b0b7645b45e287a7c57da205aa9a016122004f4a84e82720b271658b971874"
+    }
+  }
+}

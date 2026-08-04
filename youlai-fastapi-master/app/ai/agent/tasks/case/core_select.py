@@ -8,8 +8,8 @@ from sqlalchemy import select
 from app.system.aitc.constants import ConfirmStatus, ItemStatus, TaskType
 from app.system.aitc.models import AiTcCase, AiTcTaskItem
 from app.system.aitc.service import AiTcService
-from app.system.aitc.tasks.base import BaseTask, TaskContext
-from app.system.aitc.tasks.case.constants import CoreSelectConfig
+from app.ai.agent.tasks.base import BaseTask, TaskContext
+from app.ai.agent.tasks.case.constants import CoreSelectConfig
 
 
 class CoreSelectTask(BaseTask):

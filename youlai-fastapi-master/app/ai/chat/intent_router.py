@@ -5,7 +5,7 @@
 
 import re
 
-from app.system.aitc.chat.skill_base import BaseSkill, SkillRegistry, skill_registry
+from app.ai.agent.skills.base import BaseSkill, SkillRegistry, skill_registry
 
 
 class IntentRoute:

@@ -3,8 +3,8 @@
 SYNC 模式：在对话内即时返回步骤建议。
 """
 
-from app.system.aitc.chat.skill_base import BaseSkill, SkillMode, SkillResult, skill_registry
-from app.system.aitc.chat.domains.case.tools import _get_case_detail
+from app.ai.agent.skills.base import BaseSkill, SkillMode, SkillResult, skill_registry
+from app.ai.agent.skills.case.tools import _get_case_detail
 
 
 class StepsCompleteSkill(BaseSkill):

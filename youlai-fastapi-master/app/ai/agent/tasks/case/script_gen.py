@@ -5,8 +5,8 @@ import json
 from app.system.aitc.constants import ConfirmStatus, ScriptSource, TaskType
 from app.system.aitc.models import AiTcTaskItem
 from app.system.aitc.service import AiTcService
-from app.system.aitc.tasks.base import BaseTask, TaskContext
-from app.system.aitc.tasks.case.constants import ScriptGenConfig
+from app.ai.agent.tasks.base import BaseTask, TaskContext
+from app.ai.agent.tasks.case.constants import ScriptGenConfig
 
 
 class ScriptGenTask(BaseTask):

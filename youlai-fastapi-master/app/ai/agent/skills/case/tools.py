@@ -9,7 +9,7 @@ from sqlalchemy import select, func
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.system.aitc.models import AiTcCase, AiTcProject, AiTcSuite
-from app.system.aitc.chat.tool_bus import ToolBus, ToolDef, tool_bus
+from app.ai.agent.skills.bus import ToolBus, ToolDef, tool_bus
 
 
 # ═══════════════ 工具函数 ═══════════════

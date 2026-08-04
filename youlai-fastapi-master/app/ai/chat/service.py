@@ -8,8 +8,8 @@ from sqlalchemy.ext.asyncio import AsyncSession
 from sqlalchemy.orm.attributes import flag_modified
 
 from app.exceptions import BusinessException
-from app.system.aitc.chat.models import ChatSession, ChatMessage, ChatDraft, AiUsageLog
-from app.system.aitc.chat.schemas import (
+from app.ai.chat.models import ChatSession, ChatMessage, ChatDraft, AiUsageLog
+from app.ai.chat.schemas import (
     SessionCreate, SessionUpdate, SessionVO,
     MessageVO, DraftVO, DraftConfirmReq,
     ContextSetReq,

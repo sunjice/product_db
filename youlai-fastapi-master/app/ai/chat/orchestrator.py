@@ -12,11 +12,11 @@ from typing import Any, AsyncGenerator
 from langchain_core.messages import AIMessage, HumanMessage, SystemMessage
 from langchain_openai import ChatOpenAI
 
-from app.system.aitc.chat.intent_router import intent_router
-from app.system.aitc.chat.skill_base import skill_registry, SkillResult
-from app.system.aitc.chat.session_manager import SessionContext
-from app.system.aitc.chat.context_builder import context_builder_registry
-from app.system.aitc.chat.usage_logger import TokenMeter, LangChainTokenCallback
+from app.ai.chat.intent_router import intent_router
+from app.ai.agent.skills.base import skill_registry, SkillResult
+from app.ai.chat.session_manager import SessionContext
+from app.ai.chat.context_builder import context_builder_registry
+from app.ai.chat.usage_logger import TokenMeter, LangChainTokenCallback
 
 
 # 系统提示词 — 自由对话模式

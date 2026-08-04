@@ -18,7 +18,7 @@ from app.database import AsyncSessionLocal
 from app.redis import get_redis
 from app.system.aitc.constants import TaskStatus
 from app.system.aitc.models import AiTcTask
-from app.system.aitc.tasks import execute_task_bg
+from app.ai.agent.tasks import execute_task_bg
 
 # ═══════════════ 调度配置 ═══════════════
 

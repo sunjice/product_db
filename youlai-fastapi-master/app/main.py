@@ -25,7 +25,7 @@ async def lifespan(app: FastAPI):
     logger.info(f"youlai-fastapi starting | session_type={settings.SESSION_TYPE}")
 
     # 启动 AI 任务调度器（DB 轮询 + Redis 分布式锁）
-    from app.system.aitc.task_scheduler import get_scheduler
+    from app.ai.agent.tasks.scheduler import get_scheduler
     scheduler = get_scheduler()
     await scheduler.start()
 
@@ -81,7 +81,7 @@ def create_app() -> FastAPI:
     from app.system.log.router import router as log_router
     from app.system.product.router import router as product_router
     from app.system.aitc.router import router as aitc_router
-    from app.system.aitc.chat.router import router as chat_router
+    from app.ai.chat.router import router as chat_router
     from app.tool.file.router import router as file_router
     from app.tool.codegen.router import router as codegen_router
     from app.tool.wxma.router import router as wxma_router

@@ -7,8 +7,8 @@ from loguru import logger
 from app.system.aitc.constants import ConfirmStatus, TaskType
 from app.system.aitc.models import AiTcTaskItem
 from app.system.aitc.service import AiTcService
-from app.system.aitc.tasks.base import BaseTask, TaskContext
-from app.system.aitc.tasks.case.constants import CaseReviewConfig
+from app.ai.agent.tasks.base import BaseTask, TaskContext
+from app.ai.agent.tasks.case.constants import CaseReviewConfig
 
 
 class CaseReviewTask(BaseTask):

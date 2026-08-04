@@ -11,17 +11,17 @@ from app.database import get_db
 from app.dependencies import get_current_user
 from app.response import Result
 from app.auth.schemas import SysUserDetails
-from app.system.aitc.chat.service import ChatService
-from app.system.aitc.chat.schemas import (
+from app.ai.chat.service import ChatService
+from app.ai.chat.schemas import (
     SessionCreate, SessionUpdate, SessionVO,
     MessageSendReq, MessageVO,
     DraftVO, DraftConfirmReq,
     ContextSetReq, SkillInfoVO,
     ConfirmCreateTaskReq,
 )
-from app.system.aitc.chat.skill_base import skill_registry
-from app.system.aitc.chat.session_manager import SessionContext
-from app.system.aitc.chat.orchestrator import chat_orchestrator
+from app.ai.agent.skills.base import skill_registry
+from app.ai.chat.session_manager import SessionContext
+from app.ai.chat.orchestrator import chat_orchestrator
 from app.system.aitc.schemas import TaskCreate
 from app.system.aitc.task_engine import TaskEngine
 

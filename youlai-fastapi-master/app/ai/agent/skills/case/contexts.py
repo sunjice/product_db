@@ -7,8 +7,8 @@ from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.system.aitc.models import AiTcCase, AiTcSuite
-from app.system.aitc.chat.context_builder import BaseContextBuilder, context_builder_registry
-from app.system.aitc.chat.domains.case.tools import (
+from app.ai.chat.context_builder import BaseContextBuilder, context_builder_registry
+from app.ai.agent.skills.case.tools import (
     _get_project_name,
     _get_suite_name,
     _count_cases_in_suite,

@@ -3,7 +3,7 @@
 SYNC 模式：在对话内即时返回用例草稿。
 """
 
-from app.system.aitc.chat.skill_base import BaseSkill, SkillMode, SkillResult, skill_registry
+from app.ai.agent.skills.base import BaseSkill, SkillMode, SkillResult, skill_registry
 
 
 class CaseDesignSkill(BaseSkill):

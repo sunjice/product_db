@@ -9,12 +9,12 @@ from loguru import logger
 from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession
 
-from app.system.aitc.ai_client import AiClient
+from app.ai.client import AiClient
 from app.system.aitc.service import AiTcService
 from app.system.aitc.models import AiTcCase, AiTcTaskItem
 from app.system.aitc.constants import ItemStatus, TaskStatus
 
-PROMPTS_DIR = Path(__file__).resolve().parent.parent / "prompts"
+PROMPTS_DIR = Path(__file__).resolve().parent / "prompts"
 
 
 @dataclass

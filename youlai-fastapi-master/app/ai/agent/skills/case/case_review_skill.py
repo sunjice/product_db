@@ -1,7 +1,7 @@
 """用例审核 Skill — 对指定模块下的用例进行 AI 质量审核。"""
 
-from app.system.aitc.chat.skill_base import BaseSkill, SkillMode, SkillResult, skill_registry
-from app.system.aitc.chat.domains.case.tools import (
+from app.ai.agent.skills.base import BaseSkill, SkillMode, SkillResult, skill_registry
+from app.ai.agent.skills.case.tools import (
     _count_cases_in_suite, _get_project_name, _get_suite_name, resolve_scope,
 )
 from app.system.aitc.constants import TaskType

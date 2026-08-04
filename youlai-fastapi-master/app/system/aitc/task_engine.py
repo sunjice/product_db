@@ -17,7 +17,7 @@ from app.system.aitc.service import AiTcService
 from app.system.aitc.constants import (
     ConfirmStatus, ScriptSource, TaskStatus, TaskType,
 )
-from app.system.aitc.tasks import get_task_handler
+from app.ai.agent.tasks import get_task_handler
 from app.system.aitc.models import (
     AiTcCase, AiTcProject, AiTcTask, AiTcTaskItem,
 )

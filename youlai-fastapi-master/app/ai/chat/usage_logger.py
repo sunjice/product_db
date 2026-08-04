@@ -6,7 +6,7 @@ from typing import Any
 from langchain_core.callbacks import BaseCallbackHandler
 from sqlalchemy.ext.asyncio import AsyncSession
 
-from app.system.aitc.chat.models import AiUsageLog
+from app.ai.chat.models import AiUsageLog
 
 
 class TokenMeter:

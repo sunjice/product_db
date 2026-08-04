@@ -2,9 +2,11 @@
 
 import json
 
-from app.system.aitc.constants import ConfirmStatus, ScriptSource, TaskType
-from app.system.aitc.models import AiTcTaskItem
-from app.system.aitc.service import AiTcService
+from app.aitc.constants import ConfirmStatus, ScriptSource, TaskType
+from app.aitc.models import AiTcTaskItem
+from app.aitc.task.store import TaskStore
+from app.aitc.script.service import ScriptService
+from app.aitc.case.service import CaseService
 from app.ai.agent.tasks.base import BaseTask, TaskContext
 from app.ai.agent.tasks.case.constants import ScriptGenConfig
 
@@ -67,7 +69,7 @@ class ScriptGenTask(BaseTask):
 
     async def apply_result(
         self,
-        svc: AiTcService,
+        svc: TaskStore,
         item: AiTcTaskItem,
         output: dict,
         confirm_status: int,
@@ -83,7 +85,8 @@ class ScriptGenTask(BaseTask):
         if script_content:
             language = output.get("language", "python")
             framework = output.get("framework", "pytest")
-            await svc.create_script_record(
+            script_svc = ScriptService(svc.db)
+            await script_svc.create_script_record(
                 case_id=item.case_id,
                 language=language,
                 framework=framework,
@@ -91,4 +94,5 @@ class ScriptGenTask(BaseTask):
                 source=ScriptSource.AI,
                 task_item_id=item.id,
             )
-            await svc.increment_case_script_count(item.case_id)
+            case_svc = CaseService(svc.db)
+            await case_svc.increment_case_script_count(item.case_id)

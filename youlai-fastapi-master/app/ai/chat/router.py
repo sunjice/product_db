@@ -12,6 +12,7 @@ from app.dependencies import get_current_user
 from app.response import Result
 from app.auth.schemas import SysUserDetails
 from app.ai.chat.service import ChatService
+from app.ai.config import resolve_ai_config
 from app.ai.chat.schemas import (
     SessionCreate, SessionUpdate, SessionVO,
     MessageSendReq, MessageVO,
@@ -22,8 +23,8 @@ from app.ai.chat.schemas import (
 from app.ai.agent.skills.base import skill_registry
 from app.ai.chat.session_manager import SessionContext
 from app.ai.chat.orchestrator import chat_orchestrator
-from app.system.aitc.schemas import TaskCreate
-from app.system.aitc.task_engine import TaskEngine
+from app.aitc.task.schemas import TaskCreate
+from app.aitc.task.engine import TaskEngine
 
 router = APIRouter(prefix="/api/v1/aitc/chat", tags=["AI对话"])
 
@@ -101,7 +102,7 @@ async def send_message(
     )
 
     # 3. 解析 AI 配置
-    ai_config = await service.resolve_ai_config("chat")
+    ai_config = resolve_ai_config("chat")
 
     # 4. 注入上下文
     context.working["db_session"] = db
@@ -112,14 +113,6 @@ async def send_message(
         assistant_msg_type = "text"
         metadata: dict = {}
         draft_id = None
-
-        if ai_config is None:
-            # 无 AI 配置
-            err_msg = "未配置 AI 服务，请在「AI 配置管理」中添加启用的配置。"
-            await service.add_message(session_id, "assistant", err_msg)
-            yield f"event: message\ndata: {json.dumps({'role':'assistant','msg_type':'text','content': err_msg}, ensure_ascii=False)}\n\n"
-            yield "event: done\ndata: {}\n\n"
-            return
 
         try:
             draft_type = None

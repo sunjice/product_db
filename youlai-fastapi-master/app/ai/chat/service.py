@@ -14,7 +14,7 @@ from app.ai.chat.schemas import (
     MessageVO, DraftVO, DraftConfirmReq,
     ContextSetReq,
 )
-from app.system.aitc.models import AiTcAiConfig
+from app.ai.config import AiConfigSnapshot
 
 
 class ChatService:
@@ -215,44 +215,6 @@ class ChatService:
         await self.db.flush()
         await self.db.refresh(draft)
         return self._draft_to_vo(draft)
-
-    # ═══════════════ AI 配置解析 ═══════════════
-
-    async def resolve_ai_config(self, scene: str = "chat") -> AiTcAiConfig | None:
-        """解析 AI 配置：优先全局默认，其次按 scenes 匹配，最后任意启用。"""
-        # 全局默认
-        result = await self.db.execute(
-            select(AiTcAiConfig).where(
-                AiTcAiConfig.is_deleted == 0,
-                AiTcAiConfig.status == 1,
-                AiTcAiConfig.is_default == 1,
-            )
-        )
-        cfg = result.scalars().first()
-        if cfg:
-            return cfg
-
-        # 按 scenes 匹配
-        scene_pattern = f'"{scene}"'
-        result = await self.db.execute(
-            select(AiTcAiConfig).where(
-                AiTcAiConfig.is_deleted == 0,
-                AiTcAiConfig.status == 1,
-                text("scenes::text LIKE :pat").bindparams(pat=f"%{scene_pattern}%"),
-            ).order_by(AiTcAiConfig.is_default.desc())
-        )
-        cfg = result.scalars().first()
-        if cfg:
-            return cfg
-
-        # 任意启用
-        result = await self.db.execute(
-            select(AiTcAiConfig).where(
-                AiTcAiConfig.is_deleted == 0,
-                AiTcAiConfig.status == 1,
-            ).order_by(AiTcAiConfig.id)
-        )
-        return result.scalars().first()
 
     # ═══════════════ 用量日志 ═══════════════
 

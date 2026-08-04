@@ -57,6 +57,7 @@ import { computed, ref } from "vue"
 import { useRouter } from "vue-router"
 import { List, ArrowDown } from "@element-plus/icons-vue"
 import type { ChatMessage } from "@/api/chat/types"
+import { TASK_TYPE_MAP } from "@/views/aitc/constants"
 
 const props = defineProps<{
   messages: ChatMessage[]
@@ -64,12 +65,6 @@ const props = defineProps<{
 
 const router = useRouter()
 const expanded = ref(false)
-
-const TASK_TYPE_LABELS: Record<string, string> = {
-  core_select: "挑选核心用例",
-  case_review: "用例审核",
-  script_gen: "生成测试脚本",
-}
 
 interface TaskItem {
   taskId: number
@@ -92,7 +87,7 @@ const tasks = computed(() => {
 
     list.push({
       taskId: meta.task_id,
-      label: TASK_TYPE_LABELS[meta.skill_name] || meta.skill_name || "任务",
+      label: TASK_TYPE_MAP[meta.skill_name]?.label || meta.skill_name || "任务",
       status: meta.task_status ?? 0,
       done: meta.done_count ?? 0,
       total: meta.total_count ?? 0,

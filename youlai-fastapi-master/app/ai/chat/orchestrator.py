@@ -58,7 +58,7 @@ class ChatOrchestrator:
 
         context.working 中需包含:
         - db_session: AsyncSession
-        - ai_config: AiTcAiConfig ORM 实例
+        - ai_config: AiConfigSnapshot 实例
         """
 
         # Step 1: 意图路由
@@ -129,7 +129,7 @@ class ChatOrchestrator:
             yield self._sse_event("message", {
                 "role": "assistant",
                 "msg_type": "text",
-                "content": "未配置 AI 服务，请在 AI 配置管理中添加配置。",
+                "content": "未配置 AI 服务，请在 .env 中设置 AI_API_KEY 等参数。",
             })
             yield self._sse_event("done", {})
             return

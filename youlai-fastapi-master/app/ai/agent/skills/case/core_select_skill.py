@@ -4,7 +4,7 @@ from app.ai.agent.skills.base import BaseSkill, SkillMode, SkillResult, skill_re
 from app.ai.agent.skills.case.tools import (
     _count_cases_in_suite, _get_project_name, _get_suite_name, resolve_scope,
 )
-from app.system.aitc.constants import TaskType
+from app.aitc.constants import TaskType
 
 
 class CoreSelectSkill(BaseSkill):

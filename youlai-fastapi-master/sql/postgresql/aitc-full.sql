@@ -644,7 +644,7 @@ VALUES (3000, 0, '0', 'AI助手', 'C', NULL, '/aitc', 'Layout', NULL, NULL, NULL
 
 -- 用例管理
 INSERT INTO sys_menu (id, parent_id, tree_path, name, type, route_name, route_path, component, perm, always_show, keep_alive, visible, sort, icon, redirect, create_time, update_time, params)
-VALUES (3010, 3000, '0,3000', '用例管理', 'M', 'AITCCases', 'cases', 'aitc/index', 'aitc:case:list', NULL, 1, 1, 1, 'list', NULL, now(), now(), NULL);
+VALUES (3010, 3000, '0,3000', '用例管理', 'M', 'AITCCases', 'cases', 'aitc/case', 'aitc:case:list', NULL, 1, 1, 1, 'list', NULL, now(), now(), NULL);
 INSERT INTO sys_menu (id, parent_id, tree_path, name, type, route_name, route_path, component, perm, always_show, keep_alive, visible, sort, icon, redirect, create_time, update_time, params)
 VALUES (3011, 3010, '0,3000,3010', '用例查询', 'B', NULL, '', NULL, 'aitc:case:list', NULL, NULL, 1, 1, '', NULL, now(), now(), NULL);
 INSERT INTO sys_menu (id, parent_id, tree_path, name, type, route_name, route_path, component, perm, always_show, keep_alive, visible, sort, icon, redirect, create_time, update_time, params)
@@ -688,21 +688,9 @@ VALUES (3043, 3040, '0,3000,3040', '样本编辑', 'B', NULL, '', NULL, 'aitc:sa
 INSERT INTO sys_menu (id, parent_id, tree_path, name, type, route_name, route_path, component, perm, always_show, keep_alive, visible, sort, icon, redirect, create_time, update_time, params)
 VALUES (3044, 3040, '0,3000,3040', '样本删除', 'B', NULL, '', NULL, 'aitc:sample:delete', NULL, NULL, 1, 4, '', NULL, now(), now(), NULL);
 
--- AI配置
-INSERT INTO sys_menu (id, parent_id, tree_path, name, type, route_name, route_path, component, perm, always_show, keep_alive, visible, sort, icon, redirect, create_time, update_time, params)
-VALUES (3050, 3000, '0,3000', 'AI配置', 'M', 'AITCAiConfig', 'aiconfig', 'aitc/aiconfig', 'aitc:aiconfig:list', NULL, 1, 1, 5, 'setting', NULL, now(), now(), NULL);
-INSERT INTO sys_menu (id, parent_id, tree_path, name, type, route_name, route_path, component, perm, always_show, keep_alive, visible, sort, icon, redirect, create_time, update_time, params)
-VALUES (3051, 3050, '0,3000,3050', '配置查询', 'B', NULL, '', NULL, 'aitc:aiconfig:list', NULL, NULL, 1, 1, '', NULL, now(), now(), NULL);
-INSERT INTO sys_menu (id, parent_id, tree_path, name, type, route_name, route_path, component, perm, always_show, keep_alive, visible, sort, icon, redirect, create_time, update_time, params)
-VALUES (3052, 3050, '0,3000,3050', '配置创建', 'B', NULL, '', NULL, 'aitc:aiconfig:create', NULL, NULL, 1, 2, '', NULL, now(), now(), NULL);
-INSERT INTO sys_menu (id, parent_id, tree_path, name, type, route_name, route_path, component, perm, always_show, keep_alive, visible, sort, icon, redirect, create_time, update_time, params)
-VALUES (3053, 3050, '0,3000,3050', '配置编辑', 'B', NULL, '', NULL, 'aitc:aiconfig:update', NULL, NULL, 1, 3, '', NULL, now(), now(), NULL);
-INSERT INTO sys_menu (id, parent_id, tree_path, name, type, route_name, route_path, component, perm, always_show, keep_alive, visible, sort, icon, redirect, create_time, update_time, params)
-VALUES (3054, 3050, '0,3000,3050', '配置删除', 'B', NULL, '', NULL, 'aitc:aiconfig:delete', NULL, NULL, 1, 4, '', NULL, now(), now(), NULL);
-
 -- 审核工作台
 INSERT INTO sys_menu (id, parent_id, tree_path, name, type, route_name, route_path, component, perm, always_show, keep_alive, visible, sort, icon, redirect, create_time, update_time, params)
-VALUES (3060, 3000, '0,3000', '审核工作台', 'M', 'AITCReview', 'review', 'aitc/review', 'aitc:case:review', NULL, 1, 1, 6, 'checked', NULL, now(), now(), NULL);
+VALUES (3060, 3000, '0,3000', '审核工作台', 'M', 'AITCReview', 'review', 'aitc/task/review-index', 'aitc:case:review', NULL, 1, 1, 6, 'checked', NULL, now(), now(), NULL);
 
 -- 脚本库
 INSERT INTO sys_menu (id, parent_id, tree_path, name, type, route_name, route_path, component, perm, always_show, keep_alive, visible, sort, icon, redirect, create_time, update_time, params)

@@ -7,7 +7,7 @@ class Settings(BaseSettings):
     """配置项均可用 .env 或环境变量覆盖。"""
 
     model_config = SettingsConfigDict(
-        env_file=".env",
+        env_file=(".env", ".env.local"),
         env_file_encoding="utf-8",
         env_nested_delimiter="__",
         case_sensitive=False,
@@ -54,10 +54,12 @@ class Settings(BaseSettings):
     FILE_MAX_SIZE_MB: int = 50
     FILE_ALLOWED_TYPES: str = "jpg,jpeg,png,gif"
 
-    # ── AI 服务（默认兜底配置，实际使用以 ai_tc_ai_configs 表为准） ──
+    # ── AI 服务（.env / 环境变量配置，替代旧的 DB 端 aiconfig 管理） ──
     AI_API_BASE: str = "https://api.deepseek.com"
     AI_API_KEY: str = ""
     AI_MODEL: str = "deepseek-chat"
+    AI_TEMPERATURE: float = 0.3
+    AI_MAX_TOKENS: int = 4096
     AI_BATCH_SIZE: int = 30
 
     # ── 调试 ──

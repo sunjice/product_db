@@ -3,7 +3,8 @@
 import { ref, reactive, computed, nextTick, onUnmounted } from "vue"
 import { ElMessage } from "element-plus"
 import { ChatSessionAPI, ChatMessageAPI, ChatDraftAPI, ChatSkillAPI, ChatContextAPI, ChatTaskAPI } from "@/api/chat/index"
-import { TaskAPI } from "@/api/aitc/index"
+import TaskAPI from "@/api/aitc/task"
+import { TASK_TYPE_MAP } from "@/views/aitc/constants"
 import type {
   ChatSession,
   ChatMessage,
@@ -303,12 +304,6 @@ export function useChat() {
     taskMonitors.clear()
   })
 
-  const TASK_TYPE_LABELS: Record<string, string> = {
-    core_select: "挑选核心用例",
-    case_review: "用例审核",
-    script_gen: "生成测试脚本",
-  }
-
   /** 创建/查找进度消息并轮询任务状态，完成后更新消息内容 */
   /** 更新确认创建的消息中的任务状态 */
   function updateConfirmCardTaskStatus(taskId: number, status: number, done: number, total: number) {
@@ -430,7 +425,7 @@ export function useChat() {
 
       const taskId = res.task_id
       const total = res.total_count ?? metadata.total ?? 0
-      const label = TASK_TYPE_LABELS[skillName] || skillName
+      const label = TASK_TYPE_MAP[skillName]?.label || skillName
       const scopeDesc = caseIds?.length ? `已选中的 ${caseIds.length} 条` : '当前模块下的'
       const content = `已创建${label}任务，将对${scopeDesc}用例逐条处理。完成后可点击查看。`
 

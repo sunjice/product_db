@@ -4,9 +4,10 @@ import json
 
 from loguru import logger
 
-from app.system.aitc.constants import ConfirmStatus, TaskType
-from app.system.aitc.models import AiTcTaskItem
-from app.system.aitc.service import AiTcService
+from app.aitc.constants import ConfirmStatus, TaskType
+from app.aitc.models import AiTcTaskItem
+from app.aitc.task.store import TaskStore
+from app.aitc.case.service import CaseService
 from app.ai.agent.tasks.base import BaseTask, TaskContext
 from app.ai.agent.tasks.case.constants import CaseReviewConfig
 
@@ -186,7 +187,7 @@ class CaseReviewTask(BaseTask):
 
     async def apply_result(
         self,
-        svc: AiTcService,
+        svc: TaskStore,
         item: AiTcTaskItem,
         output: dict,
         confirm_status: int,
@@ -198,13 +199,14 @@ class CaseReviewTask(BaseTask):
         1. 新格式 fields[]: 从 fields[].suggested_value 提取
         2. 旧格式 rewritten: 从 rewritten.name/summary/... 提取
         """
+        case_svc = CaseService(svc.db)
         update_fields: dict[str, str | list] = self._extract_review_updates(output)
 
         if update_fields:
-            await svc.apply_case_review_result(item.case_id, update_fields)
+            await case_svc.apply_case_review_result(item.case_id, update_fields)
 
         # 无论如何更新审核状态
-        await svc.mark_case_reviewed(item.case_id)
+        await case_svc.mark_case_reviewed(item.case_id)
 
     @staticmethod
     def _extract_review_updates(output: dict) -> dict[str, str | list]:

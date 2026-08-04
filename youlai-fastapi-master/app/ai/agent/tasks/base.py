@@ -3,6 +3,7 @@
 import json
 from abc import ABC, abstractmethod
 from dataclasses import dataclass
+from enum import Enum
 from pathlib import Path
 
 from loguru import logger
@@ -10,9 +11,9 @@ from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.ai.client import AiClient
-from app.system.aitc.service import AiTcService
-from app.system.aitc.models import AiTcCase, AiTcTaskItem
-from app.system.aitc.constants import ItemStatus, TaskStatus
+from app.aitc.task.store import TaskStore
+from app.aitc.models import AiTcCase, AiTcTaskItem
+from app.aitc.constants import ItemStatus, TaskStatus
 
 PROMPTS_DIR = Path(__file__).resolve().parent / "prompts"
 
@@ -21,7 +22,7 @@ PROMPTS_DIR = Path(__file__).resolve().parent / "prompts"
 class TaskContext:
     """任务执行上下文，由 execute_task_bg 统一构建后传入。"""
     db: AsyncSession
-    svc: AiTcService
+    svc: TaskStore
     client: AiClient
     task_id: int
     items: list[AiTcTaskItem]
@@ -50,7 +51,9 @@ class BaseTask(ABC):
     @classmethod
     def load_prompt(cls) -> str:
         """从 prompts/ 目录加载对应场景的提示词模板文件。"""
-        filename = f"{cls.task_type}.txt"
+        # 显式提取值，避免 Enum+str 子类在 f-string 中返回 member name
+        task_type = cls.task_type.value if isinstance(cls.task_type, Enum) else cls.task_type
+        filename = f"{task_type}.txt"
         filepath = PROMPTS_DIR / filename
         if filepath.exists():
             return filepath.read_text(encoding="utf-8")
@@ -67,7 +70,7 @@ class BaseTask(ABC):
     @abstractmethod
     async def apply_result(
         self,
-        svc: AiTcService,
+        svc: TaskStore,
         item: AiTcTaskItem,
         output: dict,
         confirm_status: int,
@@ -77,8 +80,8 @@ class BaseTask(ABC):
 
         Parameters
         ----------
-        svc : AiTcService
-            当前 DB 会话对应的 service 实例。
+        svc : TaskStore
+            当前 DB 会话对应的 TaskStore 实例。
         item : AiTcTaskItem
             任务明细记录，含 case_id、output 等。
         output : dict

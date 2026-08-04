@@ -5,6 +5,7 @@
  * 按业务域分组的枚举定义
  */
 
+export * from "./aitc";
 export * from "./api";
 export * from "./business";
 export * from "./codegen";

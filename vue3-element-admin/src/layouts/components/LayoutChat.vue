@@ -155,7 +155,7 @@
     </template>
 
     <!-- 四边 + 四角隐形缩放区域 -->
-    <div v-for="d in resizeDirs" :key="d" :class="['resize-handle', d]" @mousedown.stop="startResize($event, d)" />
+    <div v-for="d in RESIZE_DIRS" :key="d" :class="['resize-handle', d]" @mousedown.stop="startResize($event, d)" />
   </div>
 </template>
 
@@ -169,6 +169,7 @@ import TaskListPanel from "./chat/TaskListPanel.vue"
 import { useChat } from "./chat/useChat"
 import { useAiContextStore } from "@/stores/aiContext"
 import { usePageAgent } from "./chat/usePageAgent"
+import { useChatResize, useInputResize, RESIZE_DIRS } from "./chat/useChatResize"
 import { renderSimpleMd, formatHistoryTime } from "./chat/utils"
 import type { ChatSession, ChatMessage as ChatMessageType } from "@/api/chat/types"
 
@@ -486,137 +487,9 @@ function renderMd(t: string): string {
   return renderSimpleMd(t)
 }
 
-// ── 浮窗拖拽 ──
-const isDragging = ref(false)
-let dragStartX = 0
-let dragStartY = 0
-let dragStartFloatX = 0
-let dragStartFloatY = 0
-
-function startDrag(e: MouseEvent) {
-  // 只有鼠标在标题栏区域才触发拖拽（排除按钮点击）
-  const target = e.target as HTMLElement
-  if (target.closest("button")) return
-  isDragging.value = true
-  dragStartX = e.clientX
-  dragStartY = e.clientY
-  dragStartFloatX = floatX.value
-  dragStartFloatY = floatY.value
-  document.addEventListener("mousemove", onDragMove)
-  document.addEventListener("mouseup", onDragEnd)
-}
-
-function onDragMove(e: MouseEvent) {
-  if (!isDragging.value) return
-  const dx = e.clientX - dragStartX
-  const dy = e.clientY - dragStartY
-  floatX.value = Math.min(Math.max(dragStartFloatX + dx, -panelWidth.value + 60), window.innerWidth - 60)
-  floatY.value = Math.min(Math.max(dragStartFloatY + dy, 0), window.innerHeight - 40)
-}
-
-function onDragEnd() {
-  isDragging.value = false
-  document.removeEventListener("mousemove", onDragMove)
-  document.removeEventListener("mouseup", onDragEnd)
-}
-
-// ── 窗口缩放 ──
-type ResizeDir = "top" | "bottom" | "left" | "right" | "tl" | "tr" | "bl" | "br"
-const resizeDirs: ResizeDir[] = ["top", "bottom", "left", "right", "tl", "tr", "bl", "br"]
-
-const DIR_COEF: Record<ResizeDir, { fx: number; fy: number }> = {
-  left: { fx: -1, fy: 0 }, right: { fx: 1, fy: 0 },
-  top: { fx: 0, fy: -1 }, bottom: { fx: 0, fy: 1 },
-  tl: { fx: -1, fy: -1 }, tr: { fx: 1, fy: -1 },
-  bl: { fx: -1, fy: 1 }, br: { fx: 1, fy: 1 },
-}
-const MIN_W = 320, MAX_W = 900, MIN_H = 360, MAX_H = 800
-
-const isResizing = ref(false)
-let resizeCorner = "" as ResizeDir
-let resizeStartX = 0, resizeStartY = 0
-let resizeStartW = 0, resizeStartH = 0
-let resizeStartLeft = 0, resizeStartTop = 0
-
-function startResize(e: MouseEvent, corner: ResizeDir) {
-  e.preventDefault()
-  isResizing.value = true
-  resizeCorner = corner
-  resizeStartX = e.clientX; resizeStartY = e.clientY
-  resizeStartW = panelWidth.value; resizeStartH = panelHeight.value
-  resizeStartLeft = floatX.value; resizeStartTop = floatY.value
-  document.addEventListener("mousemove", onResizeMove)
-  document.addEventListener("mouseup", onResizeEnd)
-}
-
-function onResizeMove(e: MouseEvent) {
-  if (!isResizing.value) return
-  const dx = e.clientX - resizeStartX
-  const dy = e.clientY - resizeStartY
-  const { fx, fy } = DIR_COEF[resizeCorner]
-
-  // 宽度：fx<0 表示拖左边（需同步调整 left）
-  let newW = resizeStartW + fx * dx
-  let newL = resizeStartLeft
-  if (fx < 0) {
-    newW = Math.min(Math.max(newW, MIN_W), MAX_W)
-    newL = resizeStartLeft + resizeStartW - newW
-  } else {
-    newW = Math.min(Math.max(newW, MIN_W), MAX_W)
-  }
-
-  // 高度：fy<0 表示拖上边（需同步调整 top）
-  let newH = resizeStartH + fy * dy
-  let newT = resizeStartTop
-  if (fy < 0) {
-    newH = Math.min(Math.max(newH, MIN_H), MAX_H)
-    newT = resizeStartTop + resizeStartH - newH
-  } else {
-    newH = Math.min(Math.max(newH, MIN_H), MAX_H)
-  }
-
-  panelWidth.value = newW
-  panelHeight.value = newH
-  floatX.value = newL
-  floatY.value = newT
-}
-
-function onResizeEnd() {
-  isResizing.value = false
-  document.removeEventListener("mousemove", onResizeMove)
-  document.removeEventListener("mouseup", onResizeEnd)
-}
-
-// ── 输入区高度拖拽 ──
-const inputHeight = ref(100)
-const isInputResizing = ref(false)
-
-function onInputMouseDown(e: MouseEvent) {
-  // 只有鼠标在输入区上边缘 5px 范围内才触发拖拽
-  if (e.offsetY > 5) return
-  startInputResize(e)
-}
-
-function startInputResize(e: MouseEvent) {
-  isInputResizing.value = true
-  const startY = e.clientY
-  const startHeight = inputHeight.value
-
-  function onMouseMove(ev: MouseEvent) {
-    const delta = startY - ev.clientY
-    const newHeight = Math.min(Math.max(startHeight + delta, 60), 320)
-    inputHeight.value = newHeight
-  }
-
-  function onMouseUp() {
-    isInputResizing.value = false
-    document.removeEventListener("mousemove", onMouseMove)
-    document.removeEventListener("mouseup", onMouseUp)
-  }
-
-  document.addEventListener("mousemove", onMouseMove)
-  document.addEventListener("mouseup", onMouseUp)
-}
+// ── 浮窗拖拽 + 缩放 ──
+const { startDrag, startResize } = useChatResize(panelWidth, panelHeight, floatX, floatY)
+const { inputHeight, onInputMouseDown } = useInputResize()
 
 // ── 对外暴露开关方法（给 LayoutToolbar 用） ──
 defineExpose({ toggle, isOpen })

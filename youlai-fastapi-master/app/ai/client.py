@@ -1,4 +1,4 @@
-"""AI 客户端 — 统一 OpenAI 兼容接口封装，从 ai_tc_ai_configs 表加载配置。
+"""AI 客户端 — 统一 OpenAI 兼容接口封装，配置从 .env / AiConfigSnapshot 读取。
 
 职责边界：仅负责底层 AI 交互（chat_json + JSON 解析 + token 统计）。
 任务相关的 prompt 构建、结果解析、业务逻辑已迁移到 tasks/ 目录下各任务文件。
@@ -11,32 +11,32 @@ from typing import Any
 from loguru import logger
 from openai import AsyncOpenAI
 
-from app.config import settings
-
 
 class AiClient:
     """OpenAI 兼容异步客户端，支持 DeepSeek / OpenAI / 其他兼容 provider。
 
     用法:
-        config = await db.get(AiTcAiConfig, config_id)
+        from app.ai.config import AiConfigSnapshot
+        config = AiConfigSnapshot(model="...", api_base="...", api_key="...", temperature=0.3, max_tokens=4096)
         client = AiClient(config)
         result = await client.chat_json(system_prompt, user_prompt)
     """
 
     def __init__(self, ai_config: Any):
-        """ai_config: AiTcAiConfig ORM 实例，如果为 None 则使用 .env 兜底。"""
+        """ai_config: AiConfigSnapshot 实例，如果为 None 则使用 .env 兜底。"""
         if ai_config is None:
-            self.api_base = settings.AI_API_BASE
-            self.api_key = settings.AI_API_KEY
-            self.model = settings.AI_MODEL
-            self.temperature = 0.3
-            self.max_tokens = 4096
+            from app.ai.config import ai_settings
+            self.api_base = ai_settings.AI_API_BASE
+            self.api_key = ai_settings.AI_API_KEY
+            self.model = ai_settings.AI_MODEL
+            self.temperature = ai_settings.AI_TEMPERATURE
+            self.max_tokens = ai_settings.AI_MAX_TOKENS
         else:
             self.api_base = ai_config.api_base
             self.api_key = ai_config.api_key
             self.model = ai_config.model
-            self.temperature = ai_config.temperature or 0.3
-            self.max_tokens = ai_config.max_tokens or 4096
+            self.temperature = ai_config.temperature if ai_config.temperature is not None else 0.3
+            self.max_tokens = ai_config.max_tokens if ai_config.max_tokens is not None else 4096
 
         # 标准 OpenAI SDK 写法：api_key + base_url，SDK 自动处理鉴权
         self._client = AsyncOpenAI(

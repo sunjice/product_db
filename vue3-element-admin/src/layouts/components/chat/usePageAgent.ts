@@ -1,18 +1,20 @@
 /**
- * PageAgent 封装层（Spike 阶段）
+ * PageAgent 封装层
  *
  * 用法:
  *   const { isReady, isRunning, execute, dispose } = usePageAgent()
  *   const result = await execute('点击项目选择器，选择 XX 项目')
  *
- * 配置: 在 .env.development.local 中设置，变量名 VITE_AGENT_* 前缀
- *       （.gitignore 已排除 *.local，不会提交到仓库）
+ * 配置: 在 .env.local 中设置 VITE_AGENT_ENABLED=true + VITE_AGENT_* 变量
+ * ⚠ SECURITY: 生产环境应通过后端代理转发 LLM 请求，避免 API Key 暴露到前端。
+ *   当前仅开发环境通过环境变量注入，正式上线前需改为 POST /api/v1/ai/page-agent 代理。
  */
 import { PageAgent } from 'page-agent'
 import type { PageAgentCore } from 'page-agent'
 import { ref } from 'vue'
 
-// ═══════ Spike 阶段：直连 LLM（之后切回后端代理时删除） ═══════
+// ═══════ 仅开发环境启用，生产环境走后端代理 ═══════
+const AGENT_ENABLED  = import.meta.env.VITE_AGENT_ENABLED === 'true'
 const AGENT_BASE_URL = import.meta.env.VITE_AGENT_BASE_URL || ''
 const AGENT_API_KEY  = import.meta.env.VITE_AGENT_API_KEY || ''
 const AGENT_MODEL    = import.meta.env.VITE_AGENT_MODEL || ''
@@ -33,6 +35,12 @@ export function usePageAgent() {
   const isRunning = ref(false)
 
   function getOrCreateAgent(): PageAgentCore {
+    if (!AGENT_ENABLED) {
+      throw new Error(
+        'PageAgent 未启用。请在 .env.local 中设置 VITE_AGENT_ENABLED=true。' +
+        '生产环境请通过后端 POST /api/v1/ai/page-agent 代理调用。'
+      )
+    }
     if (!agentInstance) {
       const baseURL = AGENT_BASE_URL
       const apiKey  = AGENT_API_KEY
@@ -40,7 +48,7 @@ export function usePageAgent() {
 
       if (!baseURL || !apiKey || !model) {
         throw new Error(
-          'PageAgent 配置缺失，请修改 usePageAgent.ts 顶部的 AGENT_* 常量'
+          'PageAgent 配置缺失，请在 .env.local 中设置 VITE_AGENT_BASE_URL / VITE_AGENT_API_KEY / VITE_AGENT_MODEL'
         )
       }
 

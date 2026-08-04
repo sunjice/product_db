@@ -6,8 +6,8 @@ import traceback
 
 async def test():
     from app.database import AsyncSessionLocal
-    from app.system.aitc.chat.service import ChatService
-    from app.system.aitc.chat.schemas import SessionCreate
+    from app.aitc.chat.service import ChatService
+    from app.aitc.chat.schemas import SessionCreate
 
     async with AsyncSessionLocal() as db:
         try:

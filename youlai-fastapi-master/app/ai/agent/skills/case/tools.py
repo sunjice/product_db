@@ -8,7 +8,7 @@ from loguru import logger
 from sqlalchemy import select, func
 from sqlalchemy.ext.asyncio import AsyncSession
 
-from app.system.aitc.models import AiTcCase, AiTcProject, AiTcSuite
+from app.aitc.models import AiTcCase, AiTcProject, AiTcSuite
 from app.ai.agent.skills.bus import ToolBus, ToolDef, tool_bus
 
 

@@ -5,9 +5,10 @@ import json
 from loguru import logger
 from sqlalchemy import select
 
-from app.system.aitc.constants import ConfirmStatus, ItemStatus, TaskType
-from app.system.aitc.models import AiTcCase, AiTcTaskItem
-from app.system.aitc.service import AiTcService
+from app.aitc.constants import ConfirmStatus, ItemStatus, TaskType
+from app.aitc.models import AiTcCase, AiTcTaskItem
+from app.aitc.task.store import TaskStore
+from app.aitc.case.service import CaseService
 from app.ai.agent.tasks.base import BaseTask, TaskContext
 from app.ai.agent.tasks.case.constants import CoreSelectConfig
 
@@ -130,7 +131,7 @@ class CoreSelectTask(BaseTask):
 
     async def apply_result(
         self,
-        svc: AiTcService,
+        svc: TaskStore,
         item: AiTcTaskItem,
         output: dict,
         confirm_status: int,
@@ -138,7 +139,8 @@ class CoreSelectTask(BaseTask):
     ) -> None:
         """确认：将选中的核心用例标记写入用例表。"""
         if output.get("selected"):
-            await svc.mark_case_core(
+            case_svc = CaseService(svc.db)
+            await case_svc.apply_core_select_result(
                 item.case_id,
                 output.get("reason", "AI挑选")[:512],
             )

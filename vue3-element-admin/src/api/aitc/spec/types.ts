@@ -13,7 +13,7 @@ export interface SpecQueryParams extends BaseQueryParams {
 }
 
 export interface SpecItem {
-  id: string;
+  id: number;
   project_id?: string;
   project_name?: string;
   suite_id?: string;

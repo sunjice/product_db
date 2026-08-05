@@ -629,88 +629,45 @@ SELECT setval('ai_tc_specs_id_seq', 9);
 
 
 -- ----------------------------
--- 3. AITC 菜单 + 按钮权限
--- 菜单ID范围：3000-3072
--- tree_path 格式：0,父ID （与 sys_menu 现有约定一致）
+-- 3. AITC 菜单 + 按钮权限 (从数据库直接导出)
 -- ----------------------------
 
--- 先清理旧的 AITC 菜单（ID范围 2826-2855 之前生成的）
+-- AITC 菜单数据（30 条，直接从 PostgreSQL 导出）
 DELETE FROM sys_role_menu WHERE menu_id >= 2826 AND menu_id <= 3100;
 DELETE FROM sys_menu WHERE id >= 2826 AND id <= 3100;
 
--- 顶级目录
-INSERT INTO sys_menu (id, parent_id, tree_path, name, type, route_name, route_path, component, perm, always_show, keep_alive, visible, sort, icon, redirect, create_time, update_time, params)
-VALUES (3000, 0, '0', 'AI助手', 'C', NULL, '/aitc', 'Layout', NULL, NULL, NULL, 1, 10, 'cpu', '', now(), now(), NULL);
-
--- 用例管理
-INSERT INTO sys_menu (id, parent_id, tree_path, name, type, route_name, route_path, component, perm, always_show, keep_alive, visible, sort, icon, redirect, create_time, update_time, params)
-VALUES (3010, 3000, '0,3000', '用例管理', 'M', 'AITCCases', 'cases', 'aitc/case', 'aitc:case:list', NULL, 1, 1, 1, 'list', NULL, now(), now(), NULL);
-INSERT INTO sys_menu (id, parent_id, tree_path, name, type, route_name, route_path, component, perm, always_show, keep_alive, visible, sort, icon, redirect, create_time, update_time, params)
-VALUES (3011, 3010, '0,3000,3010', '用例查询', 'B', NULL, '', NULL, 'aitc:case:list', NULL, NULL, 1, 1, '', NULL, now(), now(), NULL);
-INSERT INTO sys_menu (id, parent_id, tree_path, name, type, route_name, route_path, component, perm, always_show, keep_alive, visible, sort, icon, redirect, create_time, update_time, params)
-VALUES (3012, 3010, '0,3000,3010', '用例导入', 'B', NULL, '', NULL, 'aitc:case:import', NULL, NULL, 1, 2, '', NULL, now(), now(), NULL);
-INSERT INTO sys_menu (id, parent_id, tree_path, name, type, route_name, route_path, component, perm, always_show, keep_alive, visible, sort, icon, redirect, create_time, update_time, params)
-VALUES (3013, 3010, '0,3000,3010', '用例编辑', 'B', NULL, '', NULL, 'aitc:case:update', NULL, NULL, 1, 3, '', NULL, now(), now(), NULL);
-INSERT INTO sys_menu (id, parent_id, tree_path, name, type, route_name, route_path, component, perm, always_show, keep_alive, visible, sort, icon, redirect, create_time, update_time, params)
-VALUES (3014, 3010, '0,3000,3010', '用例删除', 'B', NULL, '', NULL, 'aitc:case:delete', NULL, NULL, 1, 4, '', NULL, now(), now(), NULL);
-INSERT INTO sys_menu (id, parent_id, tree_path, name, type, route_name, route_path, component, perm, always_show, keep_alive, visible, sort, icon, redirect, create_time, update_time, params)
-VALUES (3015, 3010, '0,3000,3010', '标记核心', 'B', NULL, '', NULL, 'aitc:case:core', NULL, NULL, 1, 5, '', NULL, now(), now(), NULL);
-INSERT INTO sys_menu (id, parent_id, tree_path, name, type, route_name, route_path, component, perm, always_show, keep_alive, visible, sort, icon, redirect, create_time, update_time, params)
-VALUES (3016, 3010, '0,3000,3010', '项目查询', 'B', NULL, '', NULL, 'aitc:project:list', NULL, NULL, 1, 6, '', NULL, now(), now(), NULL);
-INSERT INTO sys_menu (id, parent_id, tree_path, name, type, route_name, route_path, component, perm, always_show, keep_alive, visible, sort, icon, redirect, create_time, update_time, params)
-VALUES (3017, 3010, '0,3000,3010', '项目创建', 'B', NULL, '', NULL, 'aitc:project:create', NULL, NULL, 1, 7, '', NULL, now(), now(), NULL);
-INSERT INTO sys_menu (id, parent_id, tree_path, name, type, route_name, route_path, component, perm, always_show, keep_alive, visible, sort, icon, redirect, create_time, update_time, params)
-VALUES (3018, 3010, '0,3000,3010', '项目编辑', 'B', NULL, '', NULL, 'aitc:project:update', NULL, NULL, 1, 8, '', NULL, now(), now(), NULL);
-INSERT INTO sys_menu (id, parent_id, tree_path, name, type, route_name, route_path, component, perm, always_show, keep_alive, visible, sort, icon, redirect, create_time, update_time, params)
-VALUES (3019, 3010, '0,3000,3010', '项目删除', 'B', NULL, '', NULL, 'aitc:project:delete', NULL, NULL, 1, 9, '', NULL, now(), now(), NULL);
-INSERT INTO sys_menu (id, parent_id, tree_path, name, type, route_name, route_path, component, perm, always_show, keep_alive, visible, sort, icon, redirect, create_time, update_time, params)
-VALUES (3024, 3010, '0,3000,3010', '标记样本', 'B', NULL, '', NULL, 'aitc:case:sample', NULL, NULL, 1, 10, '', NULL, now(), now(), NULL);
-
--- 任务管理
-INSERT INTO sys_menu (id, parent_id, tree_path, name, type, route_name, route_path, component, perm, always_show, keep_alive, visible, sort, icon, redirect, create_time, update_time, params)
-VALUES (3020, 3000, '0,3000', '任务管理', 'M', 'AITCTask', 'tasks', 'aitc/task', 'aitc:task:list', NULL, 1, 1, 2, 'operation', NULL, now(), now(), NULL);
-INSERT INTO sys_menu (id, parent_id, tree_path, name, type, route_name, route_path, component, perm, always_show, keep_alive, visible, sort, icon, redirect, create_time, update_time, params)
-VALUES (3021, 3020, '0,3000,3020', '任务查询', 'B', NULL, '', NULL, 'aitc:task:list', NULL, NULL, 1, 1, '', NULL, now(), now(), NULL);
-INSERT INTO sys_menu (id, parent_id, tree_path, name, type, route_name, route_path, component, perm, always_show, keep_alive, visible, sort, icon, redirect, create_time, update_time, params)
-VALUES (3022, 3020, '0,3000,3020', '创建任务', 'B', NULL, '', NULL, 'aitc:task:create', NULL, NULL, 1, 2, '', NULL, now(), now(), NULL);
-INSERT INTO sys_menu (id, parent_id, tree_path, name, type, route_name, route_path, component, perm, always_show, keep_alive, visible, sort, icon, redirect, create_time, update_time, params)
-VALUES (3023, 3020, '0,3000,3020', '确认任务', 'B', NULL, '', NULL, 'aitc:task:confirm', NULL, NULL, 1, 3, '', NULL, now(), now(), NULL);
-
--- 样本库
-INSERT INTO sys_menu (id, parent_id, tree_path, name, type, route_name, route_path, component, perm, always_show, keep_alive, visible, sort, icon, redirect, create_time, update_time, params)
-VALUES (3040, 3000, '0,3000', '样本库', 'M', 'AITCSample', 'samples', 'aitc/sample', 'aitc:sample:list', NULL, 1, 1, 4, 'collection', NULL, now(), now(), NULL);
-INSERT INTO sys_menu (id, parent_id, tree_path, name, type, route_name, route_path, component, perm, always_show, keep_alive, visible, sort, icon, redirect, create_time, update_time, params)
-VALUES (3041, 3040, '0,3000,3040', '样本查询', 'B', NULL, '', NULL, 'aitc:sample:list', NULL, NULL, 1, 1, '', NULL, now(), now(), NULL);
-INSERT INTO sys_menu (id, parent_id, tree_path, name, type, route_name, route_path, component, perm, always_show, keep_alive, visible, sort, icon, redirect, create_time, update_time, params)
-VALUES (3042, 3040, '0,3000,3040', '样本创建', 'B', NULL, '', NULL, 'aitc:sample:create', NULL, NULL, 1, 2, '', NULL, now(), now(), NULL);
-INSERT INTO sys_menu (id, parent_id, tree_path, name, type, route_name, route_path, component, perm, always_show, keep_alive, visible, sort, icon, redirect, create_time, update_time, params)
-VALUES (3043, 3040, '0,3000,3040', '样本编辑', 'B', NULL, '', NULL, 'aitc:sample:update', NULL, NULL, 1, 3, '', NULL, now(), now(), NULL);
-INSERT INTO sys_menu (id, parent_id, tree_path, name, type, route_name, route_path, component, perm, always_show, keep_alive, visible, sort, icon, redirect, create_time, update_time, params)
-VALUES (3044, 3040, '0,3000,3040', '样本删除', 'B', NULL, '', NULL, 'aitc:sample:delete', NULL, NULL, 1, 4, '', NULL, now(), now(), NULL);
-
--- 审核工作台
-INSERT INTO sys_menu (id, parent_id, tree_path, name, type, route_name, route_path, component, perm, always_show, keep_alive, visible, sort, icon, redirect, create_time, update_time, params)
-VALUES (3060, 3000, '0,3000', '审核工作台', 'M', 'AITCReview', 'review', 'aitc/task/review-index', 'aitc:case:review', NULL, 1, 1, 6, 'checked', NULL, now(), now(), NULL);
-
--- 脚本库
-INSERT INTO sys_menu (id, parent_id, tree_path, name, type, route_name, route_path, component, perm, always_show, keep_alive, visible, sort, icon, redirect, create_time, update_time, params)
-VALUES (3070, 3000, '0,3000', '脚本库', 'M', 'AITCScript', 'scripts', 'aitc/script', 'aitc:script:list', NULL, 1, 1, 7, 'code', NULL, now(), now(), NULL);
-INSERT INTO sys_menu (id, parent_id, tree_path, name, type, route_name, route_path, component, perm, always_show, keep_alive, visible, sort, icon, redirect, create_time, update_time, params)
-VALUES (3071, 3070, '0,3000,3070', '脚本查询', 'B', NULL, '', NULL, 'aitc:script:list', NULL, NULL, 1, 1, '', NULL, now(), now(), NULL);
-INSERT INTO sys_menu (id, parent_id, tree_path, name, type, route_name, route_path, component, perm, always_show, keep_alive, visible, sort, icon, redirect, create_time, update_time, params)
-VALUES (3072, 3070, '0,3000,3070', '脚本编辑', 'B', NULL, '', NULL, 'aitc:script:update', NULL, NULL, 1, 2, '', NULL, now(), now(), NULL);
-
--- 规范管理
-INSERT INTO sys_menu (id, parent_id, tree_path, name, type, route_name, route_path, component, perm, always_show, keep_alive, visible, sort, icon, redirect, create_time, update_time, params)
-VALUES (3080, 3000, '0,3000', '规范管理', 'M', 'AITCSpec', 'specs', 'aitc/spec', 'aitc:spec:list', NULL, 1, 1, 8, 'document', NULL, now(), now(), NULL);
-INSERT INTO sys_menu (id, parent_id, tree_path, name, type, route_name, route_path, component, perm, always_show, keep_alive, visible, sort, icon, redirect, create_time, update_time, params)
-VALUES (3081, 3080, '0,3000,3080', '规范查询', 'B', NULL, '', NULL, 'aitc:spec:list', NULL, NULL, 1, 1, '', NULL, now(), now(), NULL);
-INSERT INTO sys_menu (id, parent_id, tree_path, name, type, route_name, route_path, component, perm, always_show, keep_alive, visible, sort, icon, redirect, create_time, update_time, params)
-VALUES (3082, 3080, '0,3000,3080', '规范创建', 'B', NULL, '', NULL, 'aitc:spec:create', NULL, NULL, 1, 2, '', NULL, now(), now(), NULL);
-INSERT INTO sys_menu (id, parent_id, tree_path, name, type, route_name, route_path, component, perm, always_show, keep_alive, visible, sort, icon, redirect, create_time, update_time, params)
-VALUES (3083, 3080, '0,3000,3080', '规范编辑', 'B', NULL, '', NULL, 'aitc:spec:update', NULL, NULL, 1, 3, '', NULL, now(), now(), NULL);
-INSERT INTO sys_menu (id, parent_id, tree_path, name, type, route_name, route_path, component, perm, always_show, keep_alive, visible, sort, icon, redirect, create_time, update_time, params)
-VALUES (3084, 3080, '0,3000,3080', '规范删除', 'B', NULL, '', NULL, 'aitc:spec:delete', NULL, NULL, 1, 4, '', NULL, now(), now(), NULL);
+INSERT INTO sys_menu (id, parent_id, tree_path, name, type, route_name, route_path, component, perm, external_url, always_show, keep_alive, visible, sort, icon, redirect, create_time, update_time, params)
+VALUES
+(3000, 0, '0', 'WorkSpace', 'C', NULL, '/aitc', 'Layout', NULL, NULL, 0, 0, 1, 2, 'el-icon-AddLocation', '', '2026-07-31T21:39:12.237250', '2026-08-05T00:57:11.552420', '[]'),
+(3010, 3000, '0,3000', '用例管理', 'M', 'AITCCases', 'cases', 'aitc/case', NULL, NULL, 0, 1, 1, 1, 'el-icon-List', NULL, '2026-07-31T21:39:12.237250', '2026-08-01T23:18:29.693088', '[]'),
+(3011, 3010, '0,3000,3010', '用例查询', 'B', NULL, '', NULL, 'aitc:case:list', NULL, 0, 0, 1, 1, '', NULL, '2026-07-31T21:39:12.237250', '2026-07-31T21:39:12.237250', NULL),
+(3012, 3010, '0,3000,3010', '用例导入', 'B', NULL, '', NULL, 'aitc:case:import', NULL, 0, 0, 1, 2, '', NULL, '2026-07-31T21:39:12.237250', '2026-07-31T21:39:12.237250', NULL),
+(3013, 3010, '0,3000,3010', '用例编辑', 'B', NULL, '', NULL, 'aitc:case:update', NULL, 0, 0, 1, 3, '', NULL, '2026-07-31T21:39:12.237250', '2026-07-31T21:39:12.237250', NULL),
+(3014, 3010, '0,3000,3010', '用例删除', 'B', NULL, '', NULL, 'aitc:case:delete', NULL, 0, 0, 1, 4, '', NULL, '2026-07-31T21:39:12.237250', '2026-07-31T21:39:12.237250', NULL),
+(3015, 3010, '0,3000,3010', '标记核心', 'B', NULL, '', NULL, 'aitc:case:core', NULL, 0, 0, 1, 5, '', NULL, '2026-07-31T21:39:12.237250', '2026-07-31T21:39:12.237250', NULL),
+(3016, 3010, '0,3000,3010', '项目查询', 'B', NULL, '', NULL, 'aitc:project:list', NULL, 0, 0, 1, 6, '', NULL, '2026-07-31T21:39:12.237250', '2026-07-31T21:39:12.237250', NULL),
+(3017, 3010, '0,3000,3010', '项目创建', 'B', NULL, '', NULL, 'aitc:project:create', NULL, 0, 0, 1, 7, '', NULL, '2026-07-31T21:39:12.237250', '2026-07-31T21:39:12.237250', NULL),
+(3018, 3010, '0,3000,3010', '项目编辑', 'B', NULL, '', NULL, 'aitc:project:update', NULL, 0, 0, 1, 8, '', NULL, '2026-07-31T21:39:12.237250', '2026-07-31T21:39:12.237250', NULL),
+(3019, 3010, '0,3000,3010', '项目删除', 'B', NULL, '', NULL, 'aitc:project:delete', NULL, 0, 0, 1, 9, '', NULL, '2026-07-31T21:39:12.237250', '2026-07-31T21:39:12.237250', NULL),
+(3020, 3000, '0,3000', '任务管理', 'M', 'AITCTask', 'tasks', 'aitc/task', NULL, NULL, 0, 1, 1, 2, 'el-icon-Collection', NULL, '2026-07-31T21:39:12.237250', '2026-08-01T23:19:03.112315', '[]'),
+(3021, 3020, '0,3000,3020', '任务查询', 'B', NULL, '', NULL, 'aitc:task:list', NULL, 0, 0, 1, 1, '', NULL, '2026-07-31T21:39:12.237250', '2026-07-31T21:39:12.237250', NULL),
+(3022, 3020, '0,3000,3020', '创建任务', 'B', NULL, '', NULL, 'aitc:task:create', NULL, 0, 0, 1, 2, '', NULL, '2026-07-31T21:39:12.237250', '2026-07-31T21:39:12.237250', NULL),
+(3023, 3020, '0,3000,3020', '确认任务', 'B', NULL, '', NULL, 'aitc:task:confirm', NULL, 0, 0, 1, 3, '', NULL, '2026-07-31T21:39:12.237250', '2026-07-31T21:39:12.237250', NULL),
+(3024, 3010, '0,3000,3010', '标记样本', 'B', NULL, '', NULL, 'aitc:case:sample', NULL, 0, 0, 1, 10, '', NULL, '2026-08-02T14:42:51.282890', '2026-08-02T14:42:51.282890', NULL),
+(3040, 3000, '0,3000', '样本库', 'M', 'AITCSample', 'samples', 'aitc/sample', NULL, NULL, 0, 1, 1, 4, 'el-icon-CreditCard', NULL, '2026-07-31T21:39:12.237250', '2026-08-01T23:19:47.274460', '[]'),
+(3041, 3040, '0,3000,3040', '样本查询', 'B', NULL, '', NULL, 'aitc:sample:list', NULL, 0, 0, 1, 1, '', NULL, '2026-07-31T21:39:12.237250', '2026-07-31T21:39:12.237250', NULL),
+(3042, 3040, '0,3000,3040', '样本创建', 'B', NULL, '', NULL, 'aitc:sample:create', NULL, 0, 0, 1, 2, '', NULL, '2026-07-31T21:39:12.237250', '2026-07-31T21:39:12.237250', NULL),
+(3043, 3040, '0,3000,3040', '样本编辑', 'B', NULL, '', NULL, 'aitc:sample:update', NULL, 0, 0, 1, 3, '', NULL, '2026-07-31T21:39:12.237250', '2026-07-31T21:39:12.237250', NULL),
+(3044, 3040, '0,3000,3040', '样本删除', 'B', NULL, '', NULL, 'aitc:sample:delete', NULL, 0, 0, 1, 4, '', NULL, '2026-07-31T21:39:12.237250', '2026-07-31T21:39:12.237250', NULL),
+(3060, 3000, '0,3000', '用例审核', 'M', 'CaseReviewIndex', 'review', 'aitc/task/case-review-index', NULL, NULL, 0, 1, 0, 6, 'gitcode', NULL, '2026-07-31T21:39:12.237250', '2026-08-05T00:40:25.548695', '[]'),
+(3070, 3000, '0,3000', '脚本库', 'M', 'AITCScript', 'scripts', 'aitc/script', 'aitc:script:list', NULL, 0, 1, 1, 7, 'code', NULL, '2026-07-31T21:39:12.237250', '2026-07-31T21:39:12.237250', NULL),
+(3071, 3070, '0,3000,3070', '脚本查询', 'B', NULL, '', NULL, 'aitc:script:list', NULL, 0, 0, 1, 1, '', NULL, '2026-07-31T21:39:12.237250', '2026-07-31T21:39:12.237250', NULL),
+(3072, 3070, '0,3000,3070', '脚本编辑', 'B', NULL, '', NULL, 'aitc:script:update', NULL, 0, 0, 1, 2, '', NULL, '2026-07-31T21:39:12.237250', '2026-07-31T21:39:12.237250', NULL),
+(3080, 3000, '0,3000', '规范管理', 'M', 'AITCSpec', 'specs', 'aitc/spec', 'aitc:spec:list', NULL, 0, 1, 1, 8, 'document', '', '2026-08-01T10:52:52.561991', '2026-08-01T10:52:52.561991', NULL),
+(3081, 3080, '0,3000,3080', '规范查询', 'B', NULL, '', NULL, 'aitc:spec:list', NULL, 0, 0, 1, 1, '', '', '2026-08-01T10:52:52.561991', '2026-08-01T10:52:52.561991', NULL),
+(3082, 3080, '0,3000,3080', '规范创建', 'B', NULL, '', NULL, 'aitc:spec:create', NULL, 0, 0, 1, 2, '', '', '2026-08-01T10:52:52.561991', '2026-08-01T10:52:52.561991', NULL),
+(3083, 3080, '0,3000,3080', '规范编辑', 'B', NULL, '', NULL, 'aitc:spec:update', NULL, 0, 0, 1, 3, '', '', '2026-08-01T10:52:52.561991', '2026-08-01T10:52:52.561991', NULL),
+(3084, 3080, '0,3000,3080', '规范删除', 'B', NULL, '', NULL, 'aitc:spec:delete', NULL, 0, 0, 1, 4, '', '', '2026-08-01T10:52:52.561991', '2026-08-01T10:52:52.561991', NULL);
 
 
 -- ----------------------------

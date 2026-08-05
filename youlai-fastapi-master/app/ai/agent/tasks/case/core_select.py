@@ -42,11 +42,12 @@ class CoreSelectTask(BaseTask):
                 if c:
                     cases_data.append({
                         "name": c.name or "",
+                        "purpose": c.purpose or "",
                         "summary": c.summary or "",
                         "importance": c.importance or 2,
                     })
                 else:
-                    cases_data.append({"name": it.case_name, "summary": "", "importance": 2})
+                    cases_data.append({"name": it.case_name, "purpose": "", "summary": "", "importance": 2})
 
             try:
                 user_prompt = self.build_user_prompt(
@@ -78,6 +79,7 @@ class CoreSelectTask(BaseTask):
             case_list.append({
                 "index": i,
                 "name": c.get("name", ""),
+                "purpose": c.get("purpose", ""),
                 "summary": c.get("summary", ""),
                 "importance": c.get("importance", 2),
             })
@@ -87,9 +89,7 @@ class CoreSelectTask(BaseTask):
         if template:
             return template.replace("{{cases}}", case_list_json).replace("{{samples}}", samples).replace("{{specs}}", specs)
 
-        return f"""以下是一批测试用例信息，请从中挑选出核心用例（高风险、核心业务流程、关键功能）。
-
-{samples}
+        return f"""以下是一批测试用例信息，请根据下方规范从中挑选出核心用例；若未提供规范，则按高风险、核心业务流程、关键功能原则判断。
 
 {specs}
 

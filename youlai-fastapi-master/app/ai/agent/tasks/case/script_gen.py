@@ -7,11 +7,12 @@ from app.aitc.models import AiTcTaskItem
 from app.aitc.task.store import TaskStore
 from app.aitc.script.service import ScriptService
 from app.aitc.case.service import CaseService
-from app.ai.agent.tasks.base import BaseTask, TaskContext
+from app.ai.agent.tasks.base import TaskContext
+from app.ai.agent.tasks.case.case_task import CaseTask
 from app.ai.agent.tasks.case.constants import ScriptGenConfig
 
 
-class ScriptGenTask(BaseTask):
+class ScriptGenTask(CaseTask):
     """为测试用例生成 pytest 自动化测试脚本。"""
 
     task_type = TaskType.SCRIPT_GEN

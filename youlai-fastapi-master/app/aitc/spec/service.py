@@ -48,12 +48,7 @@ class SpecService:
         stmt = (
             select(AiTcSpec)
             .where(*conditions)
-            .order_by(
-                AiTcSpec.task_type,
-                AiTcSpec.spec_type,
-                AiTcSpec.sort_order,
-                AiTcSpec.id,
-            )
+            .order_by(AiTcSpec.id)
         )
         count_q = select(func.count()).select_from(stmt.subquery())
         total = (await self.db.execute(count_q)).scalar() or 0

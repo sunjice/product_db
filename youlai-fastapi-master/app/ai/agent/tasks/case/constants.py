@@ -10,6 +10,7 @@ class CaseReviewConfig:
     """用例审核。"""
     BATCH_SIZE = 5   # 每批提交给 AI 审核的用例数（当前逐条执行，预留批量改造）
     COMMIT_EVERY = 1  # 每处理多少条向 DB 提交一次进度
+    SAMPLE_LIMIT = 3  # 从套件下选取样本用例的最大条数
 
 
 class ScriptGenConfig:

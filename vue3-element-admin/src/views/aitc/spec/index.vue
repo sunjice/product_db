@@ -4,7 +4,7 @@
       <!-- 搜索区域 -->
       <div class="flex gap-2 items-center mb-4 flex-wrap">
         <el-select v-model="queryParams.projectId" placeholder="项目" clearable style="width: 160px" @change="handleProjectChange">
-          <el-option v-for="p in projectOptions" :key="p.value" :label="p.label" :value="String(p.value)" />
+          <el-option v-for="p in projectOptions" :key="p.value" :label="p.label" :value="p.value" />
         </el-select>
         <el-select v-model="queryParams.taskType" placeholder="任务类型" clearable style="width: 140px" @change="loadData">
           <el-option v-for="(label, key) in taskTypeLabels" :key="key" :label="label" :value="key" />
@@ -20,46 +20,52 @@
 
       <!-- 表格 -->
       <el-table :data="tableData" v-loading="loading" border stripe>
-        <el-table-column prop="id" label="ID" width="70" />
-        <el-table-column prop="project_name" label="所属项目" width="130">
+        <el-table-column prop="id" label="ID" width="80" sortable />
+        <el-table-column prop="project_name" label="所属项目" width="100">
           <template #default="{ row }">
             <el-tag v-if="row.project_name" size="small">{{ row.project_name }}</el-tag>
             <el-tag v-else type="info" size="small">全局通用</el-tag>
           </template>
         </el-table-column>
-        <el-table-column prop="suite_name" label="所属模块" width="130">
+        <el-table-column prop="suite_name" label="所属模块" width="120">
           <template #default="{ row }">
             <span v-if="row.suite_name">{{ row.suite_name }}</span>
             <span v-else class="text-gray-400">—</span>
           </template>
         </el-table-column>
-        <el-table-column prop="task_type" label="任务类型" width="130">
+        <el-table-column prop="task_type" label="任务类型" width="100">
           <template #default="{ row }">
             <el-tag :type="taskTypeTag(row.task_type)" size="small">
               {{ taskTypeLabels[row.task_type] || row.task_type }}
             </el-tag>
           </template>
         </el-table-column>
-        <el-table-column prop="spec_type" label="规范类型" width="130">
+        <el-table-column prop="spec_type" label="规范类型" width="100">
           <template #default="{ row }">
             <el-tag :type="specTypeTag(row.spec_type)" size="small">
               {{ specTypeLabels[row.spec_type] || row.spec_type }}
             </el-tag>
           </template>
         </el-table-column>
-        <el-table-column prop="content" label="规范内容" min-width="280" show-overflow-tooltip>
+        <el-table-column prop="content" label="规范内容" min-width="250" show-overflow-tooltip>
           <template #default="{ row }">
-            <span v-if="row.content">{{ row.content.replace(/^#+ /gm, '').substring(0, 80) }}{{ row.content.length > 80 ? '...' : '' }}</span>
+            <span v-if="row.content">{{ truncateContent(row.content) }}</span>
             <span v-else class="text-gray-400">（待填写）</span>
           </template>
         </el-table-column>
-        <el-table-column prop="sort_order" label="排序" width="70" align="center" />
+        <el-table-column prop="sort_order" width="80" align="center" sortable>
+          <template #header>
+            <el-tooltip content="数值越小，规范在 AI 提示词中越靠前" placement="top">
+              <span>优先级</span>
+            </el-tooltip>
+          </template>
+        </el-table-column>
         <el-table-column prop="status" label="状态" width="70" align="center">
           <template #default="{ row }">
             <el-tag :type="row.status ? 'success' : 'danger'" size="small">{{ row.status ? '启用' : '停用' }}</el-tag>
           </template>
         </el-table-column>
-        <el-table-column label="操作" width="180" fixed="right">
+        <el-table-column label="操作" width="160" fixed="right">
           <template #default="{ row }">
             <el-button text type="primary" size="small" v-hasPerm="'aitc:spec:update'" @click="openEdit(row)">编辑</el-button>
             <el-button text type="danger" size="small" v-hasPerm="'aitc:spec:delete'" @click="handleDelete(row)">删除</el-button>
@@ -84,20 +90,20 @@
           <el-col :span="12">
             <el-form-item label="所属项目">
               <el-select v-model="form.project_id" placeholder="不选则为全局通用" clearable style="width: 100%" @change="handleFormProjectChange">
-                <el-option v-for="p in projectOptions" :key="p.value" :label="p.label" :value="Number(p.value)" />
+                <el-option v-for="p in projectOptions" :key="p.value" :label="p.label" :value="p.value" />
               </el-select>
             </el-form-item>
           </el-col>
           <el-col :span="12">
             <el-form-item label="所属模块">
-              <el-select v-model="form.suite_id" placeholder="不选则不限定模块" clearable style="width: 100%" :disabled="!form.project_id">
-                <el-option
-                  v-for="s in flatSuiteOptions"
-                  :key="s.value"
-                  :label="s.label"
-                  :value="Number(s.value)"
-                  :disabled="s.disabled"
-                />
+                <el-select v-model="form.suite_id" placeholder="不选则不限定模块" clearable style="width: 100%" :disabled="!form.project_id">
+                  <el-option
+                    v-for="s in flatSuiteOptions"
+                    :key="s.value"
+                    :label="s.label"
+                    :value="s.value"
+                    :disabled="s.disabled"
+                  />
               </el-select>
             </el-form-item>
           </el-col>
@@ -120,7 +126,7 @@
         </el-row>
         <el-row :gutter="20">
           <el-col :span="12">
-            <el-form-item label="排序">
+            <el-form-item label="优先级">
               <el-input-number v-model="form.sort_order" :min="0" :max="9999" style="width: 100%" />
             </el-form-item>
           </el-col>
@@ -144,6 +150,7 @@
         <el-button type="primary" @click="submit" :loading="submitting">确定</el-button>
       </template>
     </el-dialog>
+
   </div>
 </template>
 
@@ -153,9 +160,9 @@ import { ElMessage, ElMessageBox } from "element-plus";
 import ProjectAPI from "@/api/aitc/project";
 import SpecAPI from "@/api/aitc/spec";
 import SuiteAPI from "@/api/aitc/suite";
-import type { OptionItem, PageResult } from "@/api/common";
+import type { OptionItem } from "@/api/common";
 import type { SpecItem, SpecForm, SpecQueryParams } from "@/api/aitc/spec";
-import { TaskTypeEnum, SpecTypeEnum } from "@/enums/aitc";
+
 import { TASK_TYPE_MAP, SPEC_TYPE_LABELS, specTypeTag } from "../constants";
 
 defineOptions({ name: "AitcSpec" });
@@ -166,11 +173,15 @@ const taskTypeLabels = Object.fromEntries(
 );
 const specTypeLabels = SPEC_TYPE_LABELS;
 function taskTypeTag(t: string) { return TASK_TYPE_MAP[t]?.tag ?? ''; }
+function truncateContent(text: string, max = 80) {
+  if (!text) return "";
+  const stripped = text.replace(/^#+ /gm, "");
+  return stripped.length > max ? stripped.substring(0, max) + "..." : stripped;
+}
 
 // ── 数据 ──
 
 const projectOptions = ref<OptionItem[]>([]);
-const suiteTree = ref<any[]>([]);
 const flatSuiteOptions = ref<(OptionItem & { disabled?: boolean })[]>([]);
 const tableData = ref<SpecItem[]>([]);
 const loading = ref(false);
@@ -182,10 +193,9 @@ const queryParams = reactive<SpecQueryParams>({ pageNum: 1, pageSize: 10 });
 async function loadData() {
   loading.value = true;
   try {
-    const res = await SpecAPI.getPage(queryParams);
-    const page = res as PageResult<SpecItem>;
-    tableData.value = page?.list || (res as any)?.records || [];
-    total.value = page?.total || (res as any)?.total || 0;
+    const res = await SpecAPI.getPage(queryParams) as any;
+    tableData.value = res.records ?? res.list ?? [];
+    total.value = res.total ?? 0;
   } finally {
     loading.value = false;
   }
@@ -208,17 +218,11 @@ async function handleProjectChange() {
 // ── 套件树拉取 ──
 
 async function loadSuiteTree(projectId?: string) {
-  if (!projectId) {
-    suiteTree.value = [];
-    flatSuiteOptions.value = [];
-    return;
-  }
+  if (!projectId) { flatSuiteOptions.value = []; return; }
   try {
     const tree = await SuiteAPI.getTree(projectId);
-    suiteTree.value = tree || [];
     flatSuiteOptions.value = flattenSuiteTree(tree || []);
   } catch {
-    suiteTree.value = [];
     flatSuiteOptions.value = [];
   }
 }
@@ -230,7 +234,7 @@ function flattenSuiteTree(nodes: any[], level = 0): (OptionItem & { disabled?: b
       value: node.id,
       label: "—".repeat(level) + (level > 0 ? " " : "") + node.label,
     });
-    if (node.children && node.children.length) {
+    if (node.children?.length) {
       result.push(...flattenSuiteTree(node.children, level + 1));
     }
   }
@@ -244,15 +248,13 @@ const isEdit = ref(false);
 const submitting = ref(false);
 const editingId = ref("");
 
-const form = reactive<SpecForm>({
-  project_id: undefined,
-  suite_id: undefined,
-  task_type: "",
-  spec_type: "",
-  content: "",
-  sort_order: 0,
-  status: 1,
-});
+const DEFAULT_FORM: SpecForm = {
+  project_id: undefined, suite_id: undefined,
+  task_type: "", spec_type: "", content: "",
+  sort_order: 0, status: 1,
+};
+
+const form = reactive<SpecForm>({ ...DEFAULT_FORM });
 
 function openCreate() {
   isEdit.value = false;
@@ -280,14 +282,7 @@ function openEdit(row: SpecItem) {
 }
 
 function resetForm() {
-  form.project_id = undefined;
-  form.suite_id = undefined;
-  form.task_type = "";
-  form.spec_type = "";
-  form.content = "";
-  form.sort_order = 0;
-  form.status = 1;
-  suiteTree.value = [];
+  Object.assign(form, DEFAULT_FORM);
   flatSuiteOptions.value = [];
 }
 

@@ -29,7 +29,7 @@ class SpecUpdate(SpecCreate):
 
 
 class SpecVO(BaseModel):
-    id: BigId | None = None
+    id: int | None = None
     project_id: BigId | None = None
     project_name: str | None = None
     suite_id: BigId | None = None

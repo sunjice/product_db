@@ -3,21 +3,24 @@
 import json
 
 from loguru import logger
+from sqlalchemy import select
 
 from app.aitc.constants import ConfirmStatus, TaskType
-from app.aitc.models import AiTcTaskItem
+from app.aitc.models import AiTcCase, AiTcTask, AiTcTaskItem
 from app.aitc.task.store import TaskStore
 from app.aitc.case.service import CaseService
-from app.ai.agent.tasks.base import BaseTask, TaskContext
+from app.ai.agent.tasks.base import TaskContext
+from app.ai.agent.tasks.case.case_task import CaseTask
 from app.ai.agent.tasks.case.constants import CaseReviewConfig
 
 
-class CaseReviewTask(BaseTask):
+class CaseReviewTask(CaseTask):
     """逐字段审核测试用例。"""
 
     task_type = TaskType.CASE_REVIEW
     batch_size = CaseReviewConfig.BATCH_SIZE
     commit_every = CaseReviewConfig.COMMIT_EVERY
+    sample_limit = CaseReviewConfig.SAMPLE_LIMIT
     system_prompt = (
         "你是一个资深的测试专家。请逐字段审核给定的测试用例，"
         "对每个字段判断合格/不合格，指出违反的规范并给出修改建议。只返回 JSON。"
@@ -26,8 +29,69 @@ class CaseReviewTask(BaseTask):
     # ── 执行 ──
 
     async def execute(self, ctx: TaskContext) -> None:
-        """逐条调用 AI 审核用例。"""
+        """逐条调用 AI 审核用例。
+
+        从任务关联的套件下加载样本用例（is_sample=1），替换 ctx.samples。
+        """
+        suite_samples = await self._load_suite_samples(ctx)
+        if suite_samples:
+            ctx.samples = suite_samples
+
         await self._execute_per_item(ctx)
+
+    async def _load_suite_samples(self, ctx: TaskContext) -> str:
+        """从套件下加载标记为样本的用例，构建样本文本。
+
+        Returns
+        -------
+        str
+            格式化的样本用例文本，无样本时返回空字符串。
+        """
+        # 加载任务记录获取 suite_id
+        task = await ctx.db.get(AiTcTask, ctx.task_id)
+        if task is None:
+            return ""
+
+        # 查询套件下标记为样本的用例
+        stmt = (
+            select(AiTcCase)
+            .where(
+                AiTcCase.suite_id == task.suite_id,
+                AiTcCase.is_sample == 1,
+                AiTcCase.is_deleted == 0,
+            )
+            .limit(self.sample_limit)
+        )
+        result = await ctx.db.execute(stmt)
+        sample_cases = result.scalars().all()
+
+        if not sample_cases:
+            return ""
+
+        parts = []
+        for case in sample_cases:
+            parts.append(self._format_sample_case(case))
+
+        logger.info(
+            f"Task {ctx.task_id}: loaded {len(sample_cases)} sample cases "
+            f"from suite {task.suite_id}"
+        )
+        return "\n\n".join(parts)
+
+    @staticmethod
+    def _format_sample_case(case: AiTcCase) -> str:
+        """将一条样本用例格式化为样本文本。"""
+        lines = [f"【样本：{case.name or '(未命名)'}】"]
+        if case.summary:
+            lines.append(f"测试思想：{case.summary}")
+        if case.preconditions:
+            lines.append(f"前置条件：{case.preconditions}")
+        if case.test_data:
+            lines.append(f"测试数据：{case.test_data}")
+        if case.steps:
+            steps_text = json.dumps(case.steps, ensure_ascii=False, indent=2)
+            lines.append(f"测试步骤：{steps_text}")
+        return "\n".join(lines)
 
     # ── Prompt 构建 ──
 

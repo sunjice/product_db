@@ -15,4 +15,5 @@ from app.system.user import models as _user_models  # noqa: F401
 from app.system.product import models as _product_models  # noqa: F401
 from app.aitc import models as _aitc_models  # noqa: F401
 from app.ai.chat import models as _chat_models  # noqa: F401
+from app.ai.llm_log import models as _llm_log_models  # noqa: F401
 from app.tool.codegen import models as _codegen_models  # noqa: F401

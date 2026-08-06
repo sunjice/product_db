@@ -42,6 +42,9 @@ class AiTcTask(Base, BaseIdMixin, TimestampMixin, SoftDeleteMixin):
     output_tokens: Mapped[int] = mapped_column(
         Integer, default=0, server_default="0", comment="输出token数"
     )
+    session_id: Mapped[int | None] = mapped_column(
+        BigInteger, nullable=True, comment="创建任务的会话ID（从对话中发起任务时记录）"
+    )
     error_msg: Mapped[str | None] = mapped_column(Text, comment="错误信息")
     create_by: Mapped[str | None] = mapped_column(String(64), comment="创建人")
 

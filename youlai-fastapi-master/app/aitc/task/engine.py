@@ -101,6 +101,7 @@ class TaskEngine:
             model=ai_config.model if ai_config else None,
             total_count=len(case_ids),
             create_by=create_by,
+            session_id=form.session_id,
         )
         await svc.create_task_items(task.id, case_briefs)
 
@@ -462,6 +463,7 @@ class TaskEngine:
             spec_ids=t.spec_ids,
             ai_config_id=t.ai_config_id, model=t.model,
             status=t.status, total_count=t.total_count, done_count=t.done_count,
+            session_id=t.session_id,
             input_tokens=t.input_tokens, output_tokens=t.output_tokens,
             error_msg=t.error_msg, create_by=t.create_by,
             create_time=str(t.create_time) if t.create_time else None,

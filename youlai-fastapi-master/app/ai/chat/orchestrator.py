@@ -7,9 +7,10 @@
 
 import hashlib
 import json
+import time
 from typing import Any, AsyncGenerator
 
-from langchain_core.messages import AIMessage, HumanMessage, SystemMessage
+from langchain_core.messages import AIMessage, BaseMessage, HumanMessage, SystemMessage
 from langchain_openai import ChatOpenAI
 
 from app.ai.chat.intent_router import intent_router
@@ -17,6 +18,7 @@ from app.ai.agent.skills.base import skill_registry, SkillResult
 from app.ai.chat.session_manager import SessionContext
 from app.ai.chat.context_builder import context_builder_registry
 from app.ai.chat.usage_logger import TokenMeter, LangChainTokenCallback
+from app.ai.llm_log.writer import LlmLogWriter, make_trace_id
 
 
 # 系统提示词 — 自由对话模式
@@ -123,7 +125,7 @@ class ChatOrchestrator:
         context: SessionContext,
         history: list[dict] | None = None,
     ) -> AsyncGenerator[str, None]:
-        """自由对话模式 — 走 LangChain LLM 流式对话。"""
+        """自由对话模式 — 走 LangChain LLM 流式对话。每次调用自动写入 ai_llm_logs。"""
         ai_config = context.get_working("ai_config")
         if ai_config is None:
             yield self._sse_event("message", {
@@ -135,10 +137,13 @@ class ChatOrchestrator:
             return
 
         meter = TokenMeter(model=ai_config.model or "unknown")
+        trace_id = context.get_working("trace_id") or make_trace_id("chat", context.session_id)
 
+        t_start = time.time()
+        messages_raw: list[dict] = []
         try:
             # 构建消息列表
-            messages = [SystemMessage(content=SYSTEM_PROMPT)]
+            messages: list[BaseMessage] = [SystemMessage(content=SYSTEM_PROMPT)]
 
             # 上下文注入：指纹变化时注入页面上下文
             curr_fingerprint = self._compute_fingerprint(context.domain, context.context_json)
@@ -155,6 +160,9 @@ class ChatOrchestrator:
                     elif h.get("role") == "assistant":
                         messages.append(AIMessage(content=h.get("content", "")))
             messages.append(HumanMessage(content=message))
+
+            # 序列化 messages 用于日志
+            messages_raw = _serialize_messages(messages)
 
             llm = ChatOpenAI(
                 model=ai_config.model,
@@ -173,6 +181,25 @@ class ChatOrchestrator:
                     full_text += chunk.content
                     yield self._sse_event("chunk", {"content": chunk.content})
 
+            duration_ms = int((time.time() - t_start) * 1000)
+
+            # ── 写入 LLM 调用日志 ──
+            await LlmLogWriter.write(
+                trace_id=trace_id,
+                span_seq=0,
+                attempt=0,
+                module="chat",
+                action="freeform_chat",
+                session_id=context.session_id,
+                model=ai_config.model or "unknown",
+                status="success",
+                messages=messages_raw,
+                response_raw=full_text,
+                prompt_tokens=meter.prompt_tokens,
+                completion_tokens=meter.completion_tokens,
+                duration_ms=duration_ms,
+            )
+
             # 最终完整消息
             yield self._sse_event("message", {
                 "role": "assistant",
@@ -184,13 +211,30 @@ class ChatOrchestrator:
                         "completion": meter.completion_tokens,
                         "total": meter.total_tokens,
                     },
-                    "duration_ms": meter.duration_ms,
+                    "duration_ms": duration_ms,
                 },
             })
 
             yield self._sse_event("done", {})
 
         except Exception as e:
+            duration_ms = int((time.time() - t_start) * 1000)
+            # ── 写入失败日志 ──
+            await LlmLogWriter.write(
+                trace_id=trace_id,
+                span_seq=0,
+                attempt=0,
+                module="chat",
+                action="freeform_chat",
+                session_id=context.session_id,
+                model=ai_config.model if ai_config else "unknown",
+                status="error",
+                error_msg=str(e)[:500],
+                messages=messages_raw if messages_raw else None,
+                prompt_tokens=meter.prompt_tokens,
+                completion_tokens=meter.completion_tokens,
+                duration_ms=duration_ms,
+            )
             yield self._sse_event("error", {"message": str(e)})
             yield self._sse_event("done", {})
 
@@ -220,3 +264,21 @@ class ChatOrchestrator:
 
 # 全局单例
 chat_orchestrator = ChatOrchestrator()
+
+
+def _serialize_messages(messages: list[BaseMessage]) -> list[dict]:
+    """将 LangChain BaseMessage 列表序列化为普通 dict 列表，用于存储日志。"""
+    result = []
+    for m in messages:
+        role_map = {
+            "system": "system", "human": "user", "ai": "assistant",
+            "tool": "tool", "function": "function",
+        }
+        role = role_map.get(m.type, m.type)
+        entry = {"role": role, "content": m.content}
+        if hasattr(m, "tool_calls") and m.tool_calls:
+            entry["tool_calls"] = [tc.model_dump() if hasattr(tc, "model_dump") else str(tc) for tc in m.tool_calls]
+        if hasattr(m, "name") and m.name:
+            entry["name"] = m.name
+        result.append(entry)
+    return result

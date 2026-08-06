@@ -68,30 +68,19 @@ class CaseReviewTask(CaseTask):
         if not sample_cases:
             return ""
 
-        parts = []
-        for case in sample_cases:
-            parts.append(self._format_sample_case(case))
+        sample_dicts = [self._format_sample_case(c) for c in sample_cases]
+        samples_json = json.dumps(sample_dicts, ensure_ascii=False, indent=2)
 
         logger.info(
             f"Task {ctx.task_id}: loaded {len(sample_cases)} sample cases "
             f"from suite {task.suite_id}"
         )
-        return "\n\n".join(parts)
+        return "同模块样本用例（格式与待审核用例一致，供参考）：\n" + samples_json
 
     @staticmethod
-    def _format_sample_case(case: AiTcCase) -> str:
-        """将一条样本用例格式化为样本文本。"""
-        lines = [f"【样本：{case.name or '(未命名)'}】"]
-        if case.summary:
-            lines.append(f"测试思想：{case.summary}")
-        if case.preconditions:
-            lines.append(f"前置条件：{case.preconditions}")
-        if case.test_data:
-            lines.append(f"测试数据：{case.test_data}")
-        if case.steps:
-            steps_text = json.dumps(case.steps, ensure_ascii=False, indent=2)
-            lines.append(f"测试步骤：{steps_text}")
-        return "\n".join(lines)
+    def _format_sample_case(case: AiTcCase) -> dict:
+        """将一条样本用例构建为与待审核用例同结构的 dict。"""
+        return CaseTask._build_case_detail(case)
 
     # ── Prompt 构建 ──
 
@@ -111,11 +100,18 @@ class CaseReviewTask(CaseTask):
 
 审核规范：
 - 用例名称：应简洁明确，准确概括测试对象和核心场景，不超过30字。
+- 测试目的：应清晰说明该用例要验证的业务目标或功能点，一句话概括。
 - 测试思想：应清晰说明测试策略、风险点和验证目标，体现测试设计思路。
 - 前置条件：应完整列出执行测试前必须满足的环境、数据、权限等条件。
 - 测试数据：应明确列出测试所需的具体数据内容、格式和来源。
 - 测试Topo：应描述测试的网络拓扑、服务依赖关系。
 - 测试步骤：每步应包含明确的操作(action)和可验证的预期结果(expected)，步骤逻辑连贯，无歧义。
+
+审核指引：
+1. 审核优先级：通用规范 > 模块规范（如有）> 常见问题（如有）。
+2. 如果上面提供了同模块的样本用例，务必参考样本用例中各字段的写法风格、粒度、术语表达。
+3. 提出修改建议时，应充分参考同模块样本用例中对应字段的写法，保持与模块内其他用例的一致性。
+   例如：测试目的的表述方式、前置条件的粒度、步骤的 action/expected 格式等。
 
 返回 JSON：
 {{
@@ -127,6 +123,12 @@ class CaseReviewTask(CaseTask):
       "conclusion": "pass",
       "rule_violated": "",
       "suggested_value": ""
+    }},
+    {{
+      "field_name": "purpose",
+      "conclusion": "fail",
+      "rule_violated": "缺少测试目的，未说明该用例要验证的业务目标",
+      "suggested_value": "验证SSID名称长度超过32字符时系统拒绝并提示错误"
     }},
     {{
       "field_name": "summary",
@@ -208,7 +210,7 @@ class CaseReviewTask(CaseTask):
             fields = []
             old_issues = output.get("issues", [])
             issues_text = "; ".join(old_issues) if old_issues else ""
-            text_field_names = ["name", "summary", "preconditions", "test_data", "topo"]
+            text_field_names = ["name", "purpose", "summary", "preconditions", "test_data", "topo"]
             for fn in text_field_names:
                 sv = rewritten.get(fn)
                 has_sug = sv is not None and sv != ""
@@ -292,7 +294,7 @@ class CaseReviewTask(CaseTask):
                 if sv is None or sv == "":
                     continue
                 fn = f.get("field_name", "")
-                if fn in ("name", "summary", "preconditions", "test_data", "topo", "steps"):
+                if fn in ("name", "purpose", "summary", "preconditions", "test_data", "topo", "steps"):
                     updates[fn] = sv
             if updates:
                 return updates
@@ -300,7 +302,7 @@ class CaseReviewTask(CaseTask):
         # 旧格式：rewritten
         rewritten = output.get("rewritten")
         if rewritten and isinstance(rewritten, dict):
-            for fn in ("name", "summary", "preconditions", "steps"):
+            for fn in ("name", "purpose", "summary", "preconditions", "topo", "steps"):
                 val = rewritten.get(fn)
                 if val and fn == "name":
                     updates["name"] = val

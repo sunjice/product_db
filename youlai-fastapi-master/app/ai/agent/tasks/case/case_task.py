@@ -23,9 +23,11 @@ class CaseTask(BaseTask):
         """从 ORM 实例构建用例详情 dict。"""
         return {
             "name": case.name or "",
+            "purpose": case.purpose or "",
             "summary": case.summary or "",
             "preconditions": case.preconditions or "",
             "test_data": case.test_data or "",
+            "topo": case.topo or "",
             "steps": case.steps or [],
             "importance": case.importance or 2,
         }

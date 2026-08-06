@@ -6,10 +6,13 @@
 
 import json
 import re
+import time
 from typing import Any
 
 from loguru import logger
 from openai import AsyncOpenAI
+
+from app.ai.llm_log.writer import LlmLogWriter, make_trace_id
 
 
 class AiClient:
@@ -49,6 +52,31 @@ class AiClient:
         self.input_tokens = 0
         self.output_tokens = 0
 
+        # ── 日志上下文（由调用方 set_log_context 设置）──
+        self._log_trace_id: str = ""
+        self._log_action: str = ""
+        self._log_module: str = "task_engine"
+        self._log_session_id: int | None = None
+        self._log_task_id: int | None = None
+        self._log_span_seq: int = 0
+
+    def set_log_context(
+        self,
+        *,
+        action: str = "",
+        module: str = "task_engine",
+        session_id: int | None = None,
+        task_id: int | None = None,
+        trace_id: str | None = None,
+    ):
+        """设置 LLM 调用日志上下文。每次 chat_json 调用自动写入 ai_llm_logs。"""
+        self._log_action = action
+        self._log_module = module
+        self._log_session_id = session_id
+        self._log_task_id = task_id
+        self._log_trace_id = trace_id or make_trace_id("task", action, task_id or session_id)
+        self._log_span_seq = 0
+
     # ── 底层调用 ──
 
     async def chat_json(
@@ -59,7 +87,9 @@ class AiClient:
         max_tokens: int | None = None,
         retry: int = 1,
     ) -> dict | list:
-        """发送 Chat Completion 请求，返回解析后的 JSON（优先 JSON Mode，失败则正则兜底解析 + 重试）。"""
+        """发送 Chat Completion 请求，返回解析后的 JSON（优先 JSON Mode，失败则正则兜底解析 + 重试）。
+        每次调用自动写入 ai_llm_logs 审计日志。
+        """
         messages = [
             {"role": "system", "content": system_prompt},
             {"role": "user", "content": user_prompt},
@@ -67,8 +97,11 @@ class AiClient:
 
         temp = temperature if temperature is not None else self.temperature
         max_tok = max_tokens if max_tokens is not None else self.max_tokens
+        span_seq = self._log_span_seq
+        self._log_span_seq += 1
 
         for attempt in range(retry + 1):
+            t_start = time.time()
             try:
                 # 优先使用 JSON Mode（部分 provider 不支持，失败降级）
                 try:
@@ -90,11 +123,25 @@ class AiClient:
 
                 text = resp.choices[0].message.content or ""
                 parsed = self._extract_json(text)
+                duration_ms = int((time.time() - t_start) * 1000)
+                prompt_tok = resp.usage.prompt_tokens if resp.usage else 0
+                completion_tok = resp.usage.completion_tokens if resp.usage else 0
 
                 if parsed is not None:
-                    self.input_tokens += resp.usage.prompt_tokens if resp.usage else 0
-                    self.output_tokens += resp.usage.completion_tokens if resp.usage else 0
-                    logger.debug(f"AI response parsed successfully, tokens: in={resp.usage.prompt_tokens if resp.usage else 0} out={resp.usage.completion_tokens if resp.usage else 0}")
+                    self.input_tokens += prompt_tok
+                    self.output_tokens += completion_tok
+                    logger.debug(f"AI response parsed successfully, tokens: in={prompt_tok} out={completion_tok}")
+
+                    # ── 写入成功日志 ──
+                    await self._write_log(
+                        span_seq=span_seq, attempt=attempt,
+                        messages=messages, response_raw=text,
+                        response_json=parsed,
+                        prompt_tokens=prompt_tok,
+                        completion_tokens=completion_tok,
+                        duration_ms=duration_ms,
+                        status="success",
+                    )
                     return parsed
 
                 if attempt < retry:
@@ -102,13 +149,69 @@ class AiClient:
                     messages.append({"role": "user", "content": "请严格按照 JSON 格式输出，不要包含任何多余的文字。"})
                 else:
                     logger.error(f"JSON parse failed after {retry + 1} attempts. Raw: {text[:500]}")
+                    # ── 写入失败日志（解析失败）──
+                    await self._write_log(
+                        span_seq=span_seq, attempt=attempt,
+                        messages=messages, response_raw=text,
+                        prompt_tokens=prompt_tok,
+                        completion_tokens=completion_tok,
+                        duration_ms=duration_ms,
+                        status="error",
+                        error_msg=f"JSON解析失败，原始返回: {text[:200]}",
+                    )
 
             except Exception as e:
+                duration_ms = int((time.time() - t_start) * 1000)
                 logger.error(f"AI API call error (attempt {attempt + 1}): {e}")
+                await self._write_log(
+                    span_seq=span_seq, attempt=attempt,
+                    messages=messages,
+                    duration_ms=duration_ms,
+                    status="error",
+                    error_msg=str(e)[:500],
+                )
                 if attempt >= retry:
                     raise
 
         return {}  # fallback
+
+    # ── 日志写入 ──
+
+    async def _write_log(
+        self,
+        *,
+        span_seq: int,
+        attempt: int,
+        messages: list[dict],
+        response_raw: str | None = None,
+        response_json: dict | list | None = None,
+        prompt_tokens: int = 0,
+        completion_tokens: int = 0,
+        duration_ms: int = 0,
+        status: str = "success",
+        error_msg: str | None = None,
+    ):
+        """异步写入 ai_llm_logs 表。"""
+        if not self._log_action:
+            return  # 未设置日志上下文，跳过
+        await LlmLogWriter.write(
+            trace_id=self._log_trace_id,
+            span_seq=span_seq,
+            attempt=attempt,
+            module=self._log_module,
+            action=self._log_action,
+            session_id=self._log_session_id,
+            task_id=self._log_task_id,
+            model=self.model,
+            status=status,
+            error_msg=error_msg,
+            messages=messages,
+            response_raw=response_raw,
+            response_json=response_json,
+            prompt_tokens=prompt_tokens,
+            completion_tokens=completion_tokens,
+            duration_ms=duration_ms,
+        )
 
     # ── JSON 解析 ──
 

@@ -82,6 +82,7 @@ def create_app() -> FastAPI:
     from app.system.product.router import router as product_router
     from app.aitc.router import router as aitc_router
     from app.ai.chat.router import router as chat_router
+    from app.ai.llm_log.router import router as llm_log_router
     from app.tool.file.router import router as file_router
     from app.tool.codegen.router import router as codegen_router
     from app.tool.wxma.router import router as wxma_router
@@ -99,6 +100,7 @@ def create_app() -> FastAPI:
     app.include_router(product_router)
     app.include_router(aitc_router, prefix="/api/v1/aitc")
     app.include_router(chat_router)
+    app.include_router(llm_log_router)
     app.include_router(file_router)
     app.include_router(codegen_router)
     app.include_router(wxma_router)

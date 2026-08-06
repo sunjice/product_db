@@ -142,6 +142,7 @@ class TaskStore:
         sample_ids: list[int] | None, spec_ids: list[int] | None,
         ai_config_id: int | None, model: str | None,
         total_count: int, create_by: str,
+        session_id: int | None = None,
     ) -> AiTcTask:
         task = AiTcTask(
             task_type=task_type,
@@ -155,6 +156,7 @@ class TaskStore:
             total_count=total_count,
             done_count=0,
             create_by=create_by,
+            session_id=session_id,
         )
         self.db.add(task)
         await self.db.flush()

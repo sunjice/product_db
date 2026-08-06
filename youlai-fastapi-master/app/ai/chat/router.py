@@ -23,6 +23,7 @@ from app.ai.chat.schemas import (
 from app.ai.agent.skills.base import skill_registry
 from app.ai.chat.session_manager import SessionContext
 from app.ai.chat.orchestrator import chat_orchestrator
+from app.ai.llm_log.writer import make_trace_id
 from app.aitc.task.schemas import TaskCreate
 from app.aitc.task.engine import TaskEngine
 
@@ -107,6 +108,9 @@ async def send_message(
     # 4. 注入上下文
     context.working["db_session"] = db
     context.working["ai_config"] = ai_config
+    # 生成 trace_id 用于 LLM 调用日志串联
+    trace_id = make_trace_id("chat", session_id)
+    context.working["trace_id"] = trace_id
 
     async def event_stream() -> AsyncGenerator[str, None]:
         assistant_content = ""
@@ -279,6 +283,7 @@ async def confirm_create_task(
             project_id=req.project_id,
             suite_id=req.suite_id,
             case_ids=req.case_ids,
+            session_id=session_id,
         ),
         create_by=user.username,
     )

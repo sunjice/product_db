@@ -18,6 +18,7 @@ class TaskCreate(BaseModel):
     spec_ids: list[BigId] | None = Field(default=None, description="规范ID列表（核心挑选时使用）")
     ai_config_id: BigId | None = Field(default=None, description="AI配置ID")
     case_ids: list[BigId] | None = Field(default=None, description="指定用例ID列表，为空则取全子树")
+    session_id: BigId | None = Field(default=None, description="创建任务的会话ID（从对话中发起任务时传入）")
 
 
 class TaskQuery(PageQuery):
@@ -42,6 +43,7 @@ class TaskVO(BaseModel):
     done_count: int = 0
     input_tokens: int = 0
     output_tokens: int = 0
+    session_id: BigId | None = None
     error_msg: str | None = None
     create_by: str | None = None
     create_time: str | None = None

@@ -22,6 +22,8 @@ export function useChat() {
   const loading = ref(false)
   const streaming = ref(false)
   const streamingText = ref("")
+  const thinkingStep = ref("")       // 当前正在执行的工具名称（Agent 模式）
+  const toolSteps = ref<string[]>([]) // 已完成工具调用记录
   const activeDraft = ref<ChatDraft | null>(null)
   const showDraftPanel = ref(false)
   const loadingSessions = ref(false)
@@ -132,6 +134,8 @@ export function useChat() {
 
     streaming.value = true
     streamingText.value = ""
+    thinkingStep.value = ""
+    toolSteps.value = []
 
     try {
       const req: MessageSendReq = { content }
@@ -171,12 +175,33 @@ export function useChat() {
               const data = JSON.parse(line.slice(6).trim())
 
               switch (eventType) {
+                case "thinking":
+                  // Agent 初始心跳，表示已开始工作
+                  thinkingStep.value = data.message || "思考中..."
+                  break
+
                 case "chunk":
                   streamingText.value += data.content || ""
                   break
 
                 case "skill_start":
                   skillName = data.skill_name
+                  break
+
+                case "tool_start":
+                  // Agent 模式：工具开始执行，显示 thinking 状态
+                  thinkingStep.value = data.name || "处理中"
+                  streamingText.value += `\n[正在调用工具：${thinkingStep.value}]`
+                  break
+
+                case "tool_end":
+                  // Agent 模式：工具执行完成
+                  toolSteps.value.push(data.name || "")
+                  thinkingStep.value = ""
+                  if (data.summary) {
+                    // 工具执行结果摘要，追加到流式文本中让用户感知
+                    streamingText.value += `\n[已完成 ${data.name || "工具"}] ${data.summary}`
+                  }
                   break
 
                 case "message":
@@ -186,6 +211,14 @@ export function useChat() {
                   if (data.draft_data) draftData = data.draft_data
                   if (data.skill_name) skillName = data.skill_name
                   if (data.metadata) messageMetadata = data.metadata
+                  // 把本次 Agent 调用的工具列表合并进 metadata，便于历史消息展示
+                  if (toolSteps.value.length) {
+                    messageMetadata = {
+                      ...messageMetadata,
+                      tool_names: [...toolSteps.value],
+                      tool_calls: toolSteps.value.length,
+                    }
+                  }
                   break
 
                 case "error":
@@ -521,6 +554,8 @@ export function useChat() {
     loadingMessages,
     streaming,
     streamingText,
+    thinkingStep,
+    toolSteps,
     activeDraft,
     showDraftPanel,
     pageContext,

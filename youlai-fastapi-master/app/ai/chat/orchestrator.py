@@ -2,12 +2,13 @@
 
 使用 LangChain 进行 LLM 调用和 Tool calling 编排。
 一期：关键词路由 + 简单 LLM 调用
-二期：LangChain function calling 自动路由 + 多轮工具链
+二期（当前）：LangGraph Agent 模式（用例域，可通过 AI_AGENT_MODE_ENABLED 开关控制）
 """
 
 import hashlib
 import json
 import time
+from pathlib import Path
 from typing import Any, AsyncGenerator
 
 from langchain_core.messages import AIMessage, BaseMessage, HumanMessage, SystemMessage
@@ -19,6 +20,23 @@ from app.ai.chat.session_manager import SessionContext
 from app.ai.chat.context_builder import context_builder_registry
 from app.ai.chat.usage_logger import TokenMeter, LangChainTokenCallback
 from app.ai.llm_log.writer import LlmLogWriter, make_trace_id
+from app.ai.config import ai_settings
+
+
+# ── prompt 模板缓存在模块级（只读一次磁盘） ──
+_AGENT_PROMPT_TEMPLATE: str | None = None
+
+
+def _get_agent_prompt_template() -> str:
+    """加载 agent prompt 模板（模块级缓存，进程生命周期内只读一次磁盘）。"""
+    global _AGENT_PROMPT_TEMPLATE
+    if _AGENT_PROMPT_TEMPLATE is None:
+        prompt_path = Path(__file__).parent.parent / "agent" / "prompts" / "agent_case.txt"
+        try:
+            _AGENT_PROMPT_TEMPLATE = prompt_path.read_text(encoding="utf-8").strip()
+        except FileNotFoundError:
+            _AGENT_PROMPT_TEMPLATE = SYSTEM_PROMPT
+    return _AGENT_PROMPT_TEMPLATE
 
 
 # 系统提示词 — 自由对话模式
@@ -53,17 +71,36 @@ class ChatOrchestrator:
         """处理用户消息，流式返回 SSE 事件。
 
         处理流程:
-        1. 意图路由 → 匹配 Skill
-        2. Skill.execute() → 拿到 SkillResult
-        3. 根据 SkillResult 构造响应消息
-        4. SSE 推送
+        1. [Agent 模式] domain=case 且开关开启 → LangGraph agent 循环
+        2. 意图路由 → 匹配 Skill
+        3. Skill.execute() → 拿到 SkillResult
+        4. 根据 SkillResult 构造响应消息
+        5. SSE 推送
 
         context.working 中需包含:
         - db_session: AsyncSession
         - ai_config: AiConfigSnapshot 实例
         """
 
-        # Step 1: 意图路由
+        # ── Agent 模式分流 ──
+        if ai_settings.AI_AGENT_MODE_ENABLED and context.domain == "case":
+            async for event in self._agent_chat(message, context, history):
+                yield event
+            return
+
+        # ── Skill 路由模式 ──
+        async for event in self._skill_chat(message, context, history):
+            yield event
+
+    # ═══════════════ Skill 路由模式 ═══════════════
+
+    async def _skill_chat(
+        self,
+        message: str,
+        context: SessionContext,
+        history: list[dict] | None = None,
+    ) -> AsyncGenerator[str, None]:
+        """Skill 路由模式 — 意图路由 → Skill.execute() → SSE 响应。"""
         skill = intent_router.match(message, domain=context.domain)
 
         if skill is None:
@@ -72,13 +109,12 @@ class ChatOrchestrator:
                 yield event
             return
 
-        # Step 2: 提取参数
+        # 提取参数，合并上下文
         params = intent_router.extract_params(skill, message)
-        # 合并上下文参数
         params["project_id"] = params.get("project_id") or context.project_id
         params["suite_id"] = params.get("suite_id") or context.suite_id
 
-        # Step 3: 页面准入检查
+        # 页面准入检查
         current_page = context.context_json.get("current_page", "")
         if skill.required_page and current_page != skill.required_page:
             result = SkillResult(
@@ -87,17 +123,16 @@ class ChatOrchestrator:
                 content="该功能需要在「用例管理」页面使用。请先切换到用例管理页面，再进行此操作。",
             )
         else:
-            # Step 4: 执行 Skill
             result = await skill.execute(params, {
-            "session_id": context.session_id,
-            "project_id": context.project_id,
-            "suite_id": context.suite_id,
-            "domain": context.domain,
-            "context_json": context.context_json,
-            "db_session": context.get_working("db_session"),
-        })
+                "session_id": context.session_id,
+                "project_id": context.project_id,
+                "suite_id": context.suite_id,
+                "domain": context.domain,
+                "context_json": context.context_json,
+                "db_session": context.get_working("db_session"),
+            })
 
-        # Step 4: 构造 SSE 事件序列
+        # 构造 SSE 事件序列
         yield self._sse_event("skill_start", {
             "skill_name": skill.name,
             "mode": skill.mode.value,
@@ -118,6 +153,94 @@ class ChatOrchestrator:
             yield self._sse_event("error", {"message": result.error})
 
         yield self._sse_event("done", {})
+
+    # ═══════════════ Agent 模式（LangGraph） ═══════════════
+
+    async def _agent_chat(
+        self,
+        message: str,
+        context: SessionContext,
+        history: list[dict] | None = None,
+    ) -> AsyncGenerator[str, None]:
+        """Agent 模式 — 走 LangGraph agent 循环（模型自主选择工具）。"""
+        from app.ai.agent.graph.runner import agent_runner
+        from app.ai.agent.tools.base import ToolContext
+        from app.ai.agent.tools.case import build_case_tools, generate_tools_prompt
+
+        ai_config = context.get_working("ai_config")
+        db = context.get_working("db_session")
+
+        if ai_config is None:
+            yield self._sse_event("message", {
+                "role": "assistant",
+                "msg_type": "text",
+                "content": "未配置 AI 服务，请在 .env 中设置 AI_API_KEY 等参数。",
+            })
+            yield self._sse_event("done", {})
+            return
+
+        # ── 构建工具 ──
+        tool_ctx = ToolContext(
+            db=db,
+            session_id=context.session_id,
+            domain=context.domain,
+            project_id=context.project_id,
+            suite_id=context.suite_id,
+            page_type=context.context_json.get("current_page", ""),
+            context_json=context.context_json,
+            user_id=context.context_json.get("user_id") or 0,
+        )
+        tools = build_case_tools(tool_ctx)
+
+        # ── 加载 system prompt + 动态注入工具描述 ──
+        system_prompt = self._load_agent_prompt(context)
+        system_prompt += "\n\n" + generate_tools_prompt(tools)
+
+        # ── 执行 agent 图 ──
+        async for sse in agent_runner.run(
+            message=message,
+            context=context,
+            history=history,
+            tools=tools,
+            system_prompt=system_prompt,
+            ai_config=ai_config,
+        ):
+            yield sse
+
+    @staticmethod
+    def _load_agent_prompt(context: SessionContext) -> str:
+        """构建 agent system prompt（模板缓存 + 每请求注入页面上下文）。"""
+        prompt = _get_agent_prompt_template()
+
+        # 注入页面上下文（有 ID 即注入，名称可选）
+        project_id = context.project_id
+        suite_id = context.suite_id
+        project_name = context.context_json.get("project_name", "")
+        suite_name = context.context_json.get("suite_name", "")
+        selected_case_ids = context.context_json.get("selected_case_ids", [])
+        current_case_id = context.context_json.get("current_case_id")
+
+        context_lines = ["\n\n## 当前页面上下文"]
+        if project_id:
+            name_part = f" {project_name}" if project_name else ""
+            context_lines.append(f"- 项目：{project_id}{name_part}")
+        if suite_id:
+            name_part = f" {suite_name}" if suite_name else ""
+            context_lines.append(f"- 模块：{suite_id}{name_part}")
+        if current_case_id:
+            context_lines.append(f"- 当前查看的用例 ID：{current_case_id}")
+        if selected_case_ids:
+            ids_str = ", ".join(str(i) for i in selected_case_ids[:20])
+            suffix = f" 等共 {len(selected_case_ids)} 条" if len(selected_case_ids) > 20 else f"（共 {len(selected_case_ids)} 条）"
+            context_lines.append(f"- 已选中的用例 ID：{ids_str}{suffix}")
+
+        if len(context_lines) > 1:
+            prompt += "\n".join(context_lines)
+            prompt += "\n\n注意：如果用户有选中用例（selected_case_ids），请优先以选中的用例为操作对象，而不是整个模块。"
+
+        return prompt
+
+    # ═══════════════ 自由对话模式 ═══════════════
 
     async def _freeform_chat(
         self,

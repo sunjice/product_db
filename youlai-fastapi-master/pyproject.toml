@@ -54,6 +54,9 @@ dependencies = [
     "langchain>=0.3.0,<0.4",
     "langchain-openai>=0.2.0,<0.3",
     "langchain-core>=0.3.0,<0.4",
+    "langgraph>=0.2.0,<0.3",
+    "langgraph-prebuilt>=0.2.0,<0.3",
+    "langgraph-checkpoint>=2.0.0,<3",
     # File storage
     "minio>=7.2.0,<8",
     # Task queue

@@ -34,6 +34,9 @@ class AiSettings(BaseSettings):
     AI_CASE_REVIEW_MODEL: str = ""   # 用例审核专用模型
     AI_SCRIPT_GEN_MODEL: str = ""    # 脚本生成专用模型
 
+    # ── Agent 模式开关 ──
+    AI_AGENT_MODE_ENABLED: bool = True  # 开启后，用例域对话走 LangGraph agent 模式
+
 
 ai_settings = AiSettings()
 

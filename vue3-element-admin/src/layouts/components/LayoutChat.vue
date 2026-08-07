@@ -21,8 +21,10 @@
         <span>历史对话</span>
       </div>
       <div v-else class="header-title">
-        <el-icon><ChatDotRound /></el-icon>
-        <span>AI 对话</span>
+        <div class="header-logo">
+          <el-icon><ChatDotRound /></el-icon>
+        </div>
+        <span>AI 助手</span>
       </div>
       <div class="header-actions">
         <el-button v-if="showHistory" type="danger" text size="small" @click="onDeleteAll">
@@ -79,15 +81,26 @@
       <!-- 消息列表 -->
       <div class="chat-panel-messages" ref="msgListRef">
         <div v-if="!messages.length && !streaming" class="welcome">
-          <p class="welcome-title">有什么我能帮你的吗？</p>
-          <div class="quick-tags">
+          <div class="welcome-brand">
+            <el-icon :size="26" color="var(--el-color-primary)"><ChatDotRound /></el-icon>
+          </div>
+          <h2 class="welcome-title">{{ welcomeTitle }}</h2>
+          <p class="welcome-subtitle">我可以帮你挑选核心用例、审核质量、生成脚本、补全字段等</p>
+
+          <div class="quick-actions">
             <div
-              v-for="q in quickPrompts"
-              :key="q"
-              class="quick-tag"
-              @click="onQuickSend(q)"
+              v-for="q in quickActions"
+              :key="q.title"
+              class="quick-action-card"
+              @click="onQuickSend(q.prompt)"
             >
-              {{ q }}
+              <div class="quick-action-icon" :style="{ background: q.bg }">
+                <el-icon :size="18"><component :is="q.icon" /></el-icon>
+              </div>
+              <div class="quick-action-text">
+                <div class="quick-action-title">{{ q.title }}</div>
+                <div class="quick-action-desc">{{ q.desc }}</div>
+              </div>
             </div>
           </div>
         </div>
@@ -100,30 +113,48 @@
           @confirmDraft="onConfirmDraft"
           @confirmTask="onConfirmTask"
           @cancelTask="onCancelTask"
+          @submitClarify="onSubmitClarify"
         />
 
-        <!-- 流式输出：只有 chunk 流内容时显示打字效果 -->
-        <div v-if="streaming && streamingText" class="streaming">
-          <el-avatar :size="28" style="background: var(--el-color-primary)">
-            <el-icon><ChatDotRound /></el-icon>
-          </el-avatar>
-          <div class="streaming-text" v-html="renderMd(streamingText)" />
-          <span class="cursor">|</span>
-        </div>
-
-        <!-- 非流式的处理中（如 skill 匹配、任务生成等）用轻量指示 -->
-        <div v-else-if="streaming && !streamingText" class="streaming thinking">
-          <el-avatar :size="28" style="background: var(--el-color-primary)">
-            <el-icon><ChatDotRound /></el-icon>
-          </el-avatar>
-          <div class="thinking-dots">
-            <span /><span /><span />
-          </div>
-        </div>
+        <StreamingBubble
+          v-if="streaming"
+          :streaming-text="streamingText"
+          :thinking-step="thinkingStep"
+        />
       </div>
 
       <!-- 任务列表（有任务时才显示） -->
       <TaskListPanel v-if="hasTasks" :messages="messages" />
+
+      <!-- 上下文显示行 -->
+      <div v-if="showContextBar && contextBarItems.length" class="context-bar">
+        <div class="context-bar-inner">
+          <div class="context-info">
+            <el-icon class="context-pin"><Location /></el-icon>
+            <span class="context-label">上下文</span>
+            <span class="context-divider">·</span>
+            <span class="context-items">
+              <span
+                v-for="(item, idx) in contextBarItems"
+                :key="idx"
+                class="context-item"
+              >
+                <el-icon v-if="item.icon"><component :is="item.icon" /></el-icon>
+                <span>{{ item.label }}</span>
+              </span>
+            </span>
+          </div>
+          <el-button
+            text
+            circle
+            size="small"
+            class="context-close"
+            @click="showContextBar = false"
+          >
+            <el-icon><Close /></el-icon>
+          </el-button>
+        </div>
+      </div>
 
       <!-- 输入区（上边缘可拖拽调整高度） -->
       <div
@@ -131,22 +162,21 @@
         :style="{ height: inputHeight + 'px' }"
         @mousedown="onInputMouseDown"
       >
-        <div class="input-row">
+        <div class="input-box">
           <el-input
             v-model="text"
             type="textarea"
-            :placeholder="pageAgent.isRunning.value ? 'Agent 执行中...' : '输入消息，Enter 发送'"
-            :disabled="streaming || pageAgent.isRunning.value"
+            :placeholder="inputPlaceholder"
+            :disabled="streaming"
             @keydown="onKeydown"
             class="fill-textarea"
           />
           <el-button
-            class="send-btn"
+            class="send-btn-float"
             type="primary"
-            :disabled="!text.trim() || streaming || pageAgent.isRunning.value"
+            :disabled="!text.trim() || streaming"
             @click="send"
             circle
-            size="small"
           >
             <el-icon><Promotion /></el-icon>
           </el-button>
@@ -163,19 +193,23 @@
 import { ref, watch, nextTick, computed } from "vue"
 import { useRoute } from "vue-router"
 import { ElMessage, ElMessageBox } from "element-plus"
-import { ChatDotRound, Plus, DArrowRight, Promotion, ArrowLeft, Clock, Delete, Search, Edit } from "@element-plus/icons-vue"
+import {
+  ChatDotRound, Plus, DArrowRight, Promotion, ArrowLeft, Clock, Delete, Search, Edit,
+  FolderChecked, DocumentChecked, EditPen, CircleCheck,
+  Grid, Opportunity, Collection, Location, Close,
+} from "@element-plus/icons-vue"
 import ChatMessage from "./chat/ChatMessage.vue"
 import TaskListPanel from "./chat/TaskListPanel.vue"
+import StreamingBubble from "./chat/StreamingBubble.vue"
 import { useChat } from "./chat/useChat"
 import { useAiContextStore } from "@/stores/aiContext"
-import { usePageAgent } from "./chat/usePageAgent"
 import { useChatResize, useInputResize, RESIZE_DIRS } from "./chat/useChatResize"
-import { renderSimpleMd, formatHistoryTime } from "./chat/utils"
-import type { ChatSession, ChatMessage as ChatMessageType } from "@/api/chat/types"
+import { formatHistoryTime } from "./chat/utils"
+import type { ChatSession } from "@/api/chat/types"
 
 // ── 全局状态（组件实例不会被销毁，因为 LayoutMain 不会切换） ──
 const isOpen = ref(false)
-const panelWidth = ref(320)
+const panelWidth = ref(480)
 const panelHeight = ref(580)
 const floatX = ref(window.innerWidth - panelWidth.value - 20)
 const floatY = ref(window.innerHeight - panelHeight.value - 20)
@@ -198,6 +232,7 @@ const {
   messages,
   streaming,
   streamingText,
+  thinkingStep,
   pageContext,
   createSession,
   selectSession,
@@ -210,9 +245,6 @@ const {
   viewDraft,
   init,
 } = useChat()
-
-// ── PageAgent Spike ──
-const pageAgent = usePageAgent()
 
 // 是否有任务消息
 const hasTasks = computed(() =>
@@ -347,9 +379,10 @@ watch(
     if (projectId) ctx.project_id = Number(projectId)
     if (suiteId) ctx.suite_id = Number(suiteId)
     if (route.meta?.projectId) ctx.project_id = Number(route.meta.projectId)
-    // route 无上下文时，fallback 到 Store
-    if (!Object.keys(ctx).length && storeCtx && Object.keys(storeCtx).length) {
-      Object.assign(ctx, storeCtx)
+    // Store 里的 current_page / project_id / suite_id 等始终合并进来
+    // route.query 优先级更高（已设置过的字段不再被 Store 覆盖）
+    if (storeCtx && Object.keys(storeCtx).length) {
+      Object.assign(ctx, storeCtx, ctx)
     }
     if (Object.keys(ctx).length) {
       pageContext.value = ctx
@@ -364,65 +397,6 @@ async function send() {
   if (!val || streaming.value) return
   text.value = ""
 
-  // PageAgent Spike: 以 /agent 开头则调用页面操作
-  if (val.startsWith("/agent ")) {
-    const task = val.slice(7).trim()
-    if (!task) return
-
-    // 在聊天区插入一条用户指令
-    const agentMsg: ChatMessageType = {
-      id: Date.now(),
-      session_id: activeSessionId.value,
-      role: "user",
-      msg_type: "text",
-      content: `[Agent] ${task}`,
-      metadata_json: null,
-      draft_id: null,
-      create_time: new Date().toISOString(),
-    }
-    messages.value.push(agentMsg)
-
-    // 执行 agent 任务
-    try {
-      const result = await pageAgent.execute(task)
-      const summary = result.success
-        ? `PageAgent 执行完成 | 步骤: ${result.steps} | 耗时: ${(result.durationMs / 1000).toFixed(1)}s\n\n${result.data}`
-        : `PageAgent 执行失败 | 耗时: ${(result.durationMs / 1000).toFixed(1)}s\n\n${result.data}`
-
-      const resultMsg: ChatMessageType = {
-        id: Date.now() + 1,
-        session_id: activeSessionId.value,
-        role: "system",
-        msg_type: "text",
-        content: summary,
-        metadata_json: { agent_result: result, type: "page_agent" },
-        draft_id: null,
-        create_time: new Date().toISOString(),
-      }
-      messages.value.push(resultMsg)
-
-      if (result.success) {
-        ElMessage.success(`Agent: ${result.steps} 步完成 (${(result.durationMs / 1000).toFixed(1)}s)`)
-      } else {
-        ElMessage.error(`Agent 失败: ${result.data.slice(0, 100)}`)
-      }
-    } catch (e: any) {
-      const errorMsg: ChatMessageType = {
-        id: Date.now() + 1,
-        session_id: activeSessionId.value,
-        role: "system",
-        msg_type: "text",
-        content: `PageAgent 初始化失败: ${e?.message || String(e)}`,
-        metadata_json: { type: "page_agent_error" },
-        draft_id: null,
-        create_time: new Date().toISOString(),
-      }
-      messages.value.push(errorMsg)
-      ElMessage.error("Agent 初始化失败，请检查 .env.development.local 配置")
-    }
-    return
-  }
-
   await sendMessage(val)
 }
 
@@ -433,15 +407,92 @@ function onKeydown(e: KeyboardEvent) {
   }
 }
 
-// ── 快捷提问 ──
-const quickPrompts = [
-  "帮我挑选核心用例",
-  "审核用例质量",
-  "生成测试脚本",
-  "补全用例字段",
-  "补写测试步骤",
-  "设计测试用例",
-]
+// ── 上下文显示行 ──
+const showContextBar = ref(true)
+
+const welcomeTitle = computed(() => {
+  const hour = new Date().getHours()
+  let greet: string
+  if (hour < 12) greet = "早上好"
+  else if (hour < 18) greet = "下午好"
+  else greet = "晚上好"
+  return `${greet}，有什么我能帮你的吗？`
+})
+
+interface ContextItem {
+  label: string
+  icon?: any
+}
+
+const contextBarItems = computed<ContextItem[]>(() => {
+  const ctx = pageContext.value || {}
+  const page = ctx.current_page || ""
+  if (!page) return []
+
+  const items: ContextItem[] = []
+
+  // 公共字段：项目、模块、用例
+  if (ctx.project_name || ctx.project_id) {
+    items.push({ label: ctx.project_name || `项目 #${ctx.project_id}`, icon: FolderChecked })
+  }
+  if (ctx.suite_name || ctx.suite_id) {
+    items.push({ label: ctx.suite_name || `模块 #${ctx.suite_id}`, icon: Collection })
+  }
+  if (ctx.current_case_id) {
+    items.push({ label: `用例 #${ctx.current_case_id}`, icon: DocumentChecked })
+  }
+
+  // 页面特有字段
+  if (page === "case") {
+    if (ctx.selected_case_ids?.length) {
+      items.push({ label: `已选 ${ctx.selected_case_ids.length} 条用例`, icon: Grid })
+    }
+  } else {
+    if (ctx.task_id) items.push({ label: `任务 #${ctx.task_id}`, icon: Opportunity })
+    if (ctx.script_id) items.push({ label: `脚本 #${ctx.script_id}`, icon: DocumentChecked })
+  }
+
+  return items
+})
+
+const inputPlaceholder = computed(() => {
+  const page = pageContext.value?.current_page
+  if (page === "case") return "提问、@（提及）或使用“/”进行操作"
+  return "有什么我可以帮你的？"
+})
+
+// ── 快捷提问（Rovo 风格卡片） ──
+interface QuickAction {
+  title: string
+  desc: string
+  prompt: string
+  icon: any
+  bg: string
+}
+
+const quickActions = ref<QuickAction[]>([
+  {
+    title: "挑选核心用例",
+    desc: "从当前模块智能挑选最重要的用例",
+    prompt: "帮我挑选核心用例",
+    icon: CircleCheck,
+    bg: "linear-gradient(135deg, #e0f2fe 0%, #bae6fd 100%)",
+  },
+  {
+    title: "审核用例质量",
+    desc: "检查字段完整性和步骤规范性",
+    prompt: "审核用例质量",
+    icon: CircleCheck,
+    bg: "linear-gradient(135deg, #dcfce7 0%, #bbf7d0 100%)",
+  },
+  {
+    title: "补写测试步骤",
+    desc: "AI 自动补全用例的测试步骤",
+    prompt: "补写测试步骤",
+    icon: EditPen,
+    bg: "linear-gradient(135deg, #ffedd5 0%, #fed7aa 100%)",
+  },
+])
 
 async function onQuickSend(prompt: string) {
   if (streaming.value) return
@@ -471,6 +522,11 @@ function onCancelTask(metadata: Record<string, any>) {
   cancelTask(metadata)
 }
 
+// ── 澄清卡片提交：将答案作为新消息发送给 LLM ──
+async function onSubmitClarify(text: string) {
+  await sendMessage(text)
+}
+
 // ── 自动滚动 ──
 watch(
   () => [messages.value.length, streamingText.value],
@@ -481,11 +537,6 @@ watch(
     }
   }
 )
-
-// ── 简易 Markdown ──
-function renderMd(t: string): string {
-  return renderSimpleMd(t)
-}
 
 // ── 浮窗拖拽 + 缩放 ──
 const { startDrag, startResize } = useChatResize(panelWidth, panelHeight, floatX, floatY)
@@ -532,18 +583,18 @@ defineExpose({ toggle, isOpen })
 .layout-chat-float {
   position: fixed;
   background: var(--el-bg-color);
-  border: 1px solid var(--el-border-color);
-  border-radius: 12px;
+  border: 1px solid var(--el-border-color-lighter);
+  border-radius: 16px;
   display: flex;
   flex-direction: column;
   z-index: 2000;
-  box-shadow: 0 8px 32px rgba(0, 0, 0, 0.12);
+  box-shadow: 0 12px 40px rgba(0, 0, 0, 0.1), 0 4px 12px rgba(0, 0, 0, 0.04);
   overflow: hidden;
   transition: box-shadow 0.2s;
 }
 
 .layout-chat-float:hover {
-  box-shadow: 0 12px 40px rgba(0, 0, 0, 0.18);
+  box-shadow: 0 16px 48px rgba(0, 0, 0, 0.12), 0 6px 16px rgba(0, 0, 0, 0.05);
 }
 
 /* 缩放热区 */
@@ -566,21 +617,37 @@ defineExpose({ toggle, isOpen })
   display: flex;
   align-items: center;
   justify-content: space-between;
-  padding: 3px 8px;
+  padding: 8px 12px;
   border-bottom: 1px solid var(--el-border-color-lighter);
-  background: var(--el-color-primary-light-9);
+  background: var(--el-bg-color);
   flex-shrink: 0;
   cursor: move;
   user-select: none;
-  min-height: 28px;
+  min-height: 44px;
 }
 
 .header-title {
   display: flex;
   align-items: center;
-  gap: 4px;
+  gap: 8px;
   font-weight: 600;
-  font-size: 12px;
+  font-size: 14px;
+  color: var(--el-text-color-primary);
+}
+
+.header-logo {
+  width: 28px;
+  height: 28px;
+  border-radius: 8px;
+  background: var(--el-color-primary);
+  color: #fff;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+}
+
+.header-logo .el-icon {
+  font-size: 16px;
 }
 
 .header-actions {
@@ -620,111 +687,196 @@ defineExpose({ toggle, isOpen })
   display: flex;
   flex-direction: column;
   align-items: center;
-  justify-content: center;
-  padding: 40px 20px;
+  justify-content: flex-start;
+  padding: 28px 16px 16px;
   text-align: center;
-  gap: 16px;
+  gap: 8px;
+}
+
+.welcome-brand {
+  width: 48px;
+  height: 48px;
+  border-radius: 16px;
+  background: linear-gradient(135deg, var(--el-color-primary-light-8) 0%, var(--el-color-primary-light-9) 100%);
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  margin-bottom: 2px;
+  box-shadow: 0 4px 16px rgba(var(--el-color-primary-rgb), 0.12);
 }
 
 .welcome-title {
-  font-size: 14px;
+  font-size: 15px;
   font-weight: 600;
   color: var(--el-text-color-primary);
   margin: 0;
+  line-height: 1.35;
 }
 
-.quick-tags {
-  display: flex;
-  flex-wrap: wrap;
-  justify-content: center;
-  gap: 10px;
-  max-width: 420px;
-}
-
-.quick-tag {
-  padding: 8px 14px;
-  border-radius: 18px;
-  background: var(--el-fill-color-light);
-  border: 1px solid var(--el-border-color-lighter);
-  color: var(--el-text-color-regular);
+.welcome-subtitle {
   font-size: 11px;
+  color: var(--el-text-color-secondary);
+  margin: 0 0 8px;
+  line-height: 1.45;
+}
+
+.quick-actions {
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+  width: 100%;
+  max-width: 420px;
+  padding: 0 4px;
+}
+
+.quick-action-card {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  padding: 10px 12px;
+  border-radius: 12px;
+  background: var(--el-bg-color);
+  border: 1px solid var(--el-border-color-lighter);
   cursor: pointer;
   transition: all 0.2s;
   user-select: none;
+  text-align: left;
+  box-shadow: 0 1px 2px rgba(0, 0, 0, 0.02);
 }
 
-.quick-tag:hover {
-  background: var(--el-color-primary-light-9);
+.quick-action-card:hover {
   border-color: var(--el-color-primary-light-5);
-  color: var(--el-color-primary);
+  box-shadow: 0 4px 12px rgba(0, 0, 0, 0.05);
 }
 
-.streaming {
+.quick-action-icon {
+  width: 30px;
+  height: 30px;
+  border-radius: 8px;
   display: flex;
-  align-items: flex-start;
-  gap: 6px;
-  padding: 6px 10px;
+  align-items: center;
+  justify-content: center;
+  flex-shrink: 0;
+  color: var(--el-text-color-primary);
 }
 
-.streaming-text {
+.quick-action-text {
   flex: 1;
-  line-height: 1.55;
+  min-width: 0;
+  display: flex;
+  flex-direction: column;
+  gap: 1px;
+}
+
+.quick-action-title {
+  font-size: 12px;
+  font-weight: 600;
+  color: var(--el-text-color-primary);
+}
+
+.quick-action-desc {
+  font-size: 10px;
+  color: var(--el-text-color-secondary);
+  line-height: 1.35;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.context-item .el-icon {
+  font-size: 11px;
+}
+
+.context-close {
+  padding: 6px 12px 0;
+  flex-shrink: 0;
+}
+
+.context-bar {
+  padding: 6px 12px 0;
+  flex-shrink: 0;
+}
+
+.context-bar-inner {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 8px;
+  padding: 6px 10px;
+  border-radius: 10px;
+  background: var(--el-fill-color-light);
+  border: 1px solid var(--el-border-color-lighter);
+}
+
+.context-info {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  min-width: 0;
+  flex: 1;
+}
+
+.context-pin {
+  font-size: 13px;
+  color: var(--el-color-primary);
+  flex-shrink: 0;
+}
+
+.context-label {
+  font-size: 11px;
+  font-weight: 500;
+  color: var(--el-text-color-primary);
+  flex-shrink: 0;
+}
+
+.context-divider {
+  font-size: 11px;
+  color: var(--el-text-color-placeholder);
+  flex-shrink: 0;
+}
+
+.context-items {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  min-width: 0;
+  flex: 1;
+  overflow: hidden;
+}
+
+.context-item {
+  display: inline-flex;
+  align-items: center;
+  gap: 3px;
+  font-size: 11px;
+  color: var(--el-text-color-regular);
+  background: var(--el-bg-color);
+  padding: 2px 8px;
+  border-radius: 10px;
+  border: 1px solid var(--el-border-color-lighter);
+  white-space: nowrap;
+  flex-shrink: 0;
+}
+
+.context-item .el-icon {
+  font-size: 11px;
+}
+
+.context-close {
+  flex-shrink: 0;
+}
+
+.context-close :deep(.el-icon) {
   font-size: 12px;
 }
 
-.streaming-text :deep(code) {
-  background: var(--el-fill-color);
-  padding: 1px 4px;
-  border-radius: 3px;
-}
-
-.streaming.thinking {
-  padding: 10px 10px 6px;
-}
-
-.thinking-dots {
-  display: flex;
-  gap: 4px;
-  align-items: center;
-  padding: 4px 0;
-}
-
-.thinking-dots span {
-  width: 6px;
-  height: 6px;
-  border-radius: 50%;
-  background: var(--el-color-primary);
-  animation: dotPulse 1.4s infinite ease-in-out both;
-}
-
-.thinking-dots span:nth-child(1) { animation-delay: -0.32s; }
-.thinking-dots span:nth-child(2) { animation-delay: -0.16s; }
-.thinking-dots span:nth-child(3) { animation-delay: 0s; }
-
-@keyframes dotPulse {
-  0%, 80%, 100% { transform: scale(0.4); opacity: 0.3; }
-  40% { transform: scale(1); opacity: 1; }
-}
-
-.cursor {
-  animation: blink 1s infinite;
-  color: var(--el-color-primary);
-  font-weight: bold;
-}
-
-@keyframes blink {
-  0%, 50% { opacity: 1; }
-  51%, 100% { opacity: 0; }
-}
-
 .chat-panel-input {
-  padding: 8px 10px;
-  border-top: 1px solid var(--el-border-color-lighter);
+  padding: 10px 12px 12px;
   flex-shrink: 0;
-  overflow: hidden;
+  overflow: visible;
   display: flex;
   flex-direction: column;
-  min-height: 60px;
+  min-height: 62px;
   position: relative;
 }
 
@@ -739,21 +891,42 @@ defineExpose({ toggle, isOpen })
   z-index: 1;
 }
 
-.chat-panel-input::after {
-  content: "";
-  position: absolute;
-  top: 1px;
-  left: 50%;
-  transform: translateX(-50%);
-  width: 28px;
-  height: 3px;
-  border-radius: 2px;
-  background: var(--el-border-color);
-  transition: background 0.2s;
+.input-box {
+  flex: 1;
+  display: flex;
+  flex-direction: column;
+  position: relative;
+  border-radius: 18px;
+  background: var(--el-bg-color);
+  border: 1px solid var(--el-border-color-lighter);
+  padding: 8px 46px 8px 14px;
+  transition: all 0.2s;
+  box-shadow: 0 1px 3px rgba(0, 0, 0, 0.04);
+  min-height: 0;
+  overflow: hidden;
 }
 
-.chat-panel-input:hover::after {
-  background: var(--el-color-primary-light-5);
+.input-box:focus-within {
+  border-color: var(--el-color-primary-light-5);
+  box-shadow: 0 0 0 3px var(--el-color-primary-light-8), 0 1px 3px rgba(0, 0, 0, 0.04);
+}
+
+.send-btn-float {
+  position: absolute;
+  right: 8px;
+  bottom: 8px;
+  width: 32px;
+  height: 32px;
+  z-index: 2;
+  transition: all 0.2s;
+}
+
+.send-btn-float :deep(.el-icon) {
+  font-size: 15px;
+}
+
+.send-btn-float.is-disabled {
+  opacity: 0.5;
 }
 
 /* 历史面板 */
@@ -832,30 +1005,32 @@ defineExpose({ toggle, isOpen })
   background: var(--el-fill-color);
 }
 
-.input-row {
-  position: relative;
+.fill-textarea {
   flex: 1;
   min-height: 0;
-}
-
-.send-btn {
-  position: absolute;
-  right: 6px;
-  bottom: 6px;
-  z-index: 2;
-}
-
-.input-row :deep(.el-textarea) {
-  height: 100%;
   display: flex;
 }
 
-.input-row :deep(.el-textarea__inner) {
-  border-radius: 8px;
-  padding: 8px 40px 8px 12px;
+.fill-textarea :deep(.el-textarea) {
+  flex: 1;
+  min-height: 0;
+  display: flex;
+}
+
+.fill-textarea :deep(.el-textarea__inner) {
+  border: none;
+  border-radius: 0;
+  padding: 0;
   font-size: 13px;
-  line-height: 1.5;
+  line-height: 1.55;
   resize: none;
   height: 100%;
+  min-height: 20px;
+  background: transparent;
+  box-shadow: none;
+}
+
+.fill-textarea :deep(.el-textarea__inner::placeholder) {
+  color: var(--el-text-color-placeholder);
 }
 </style>

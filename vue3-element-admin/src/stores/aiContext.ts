@@ -63,6 +63,13 @@ export const useAiContextStore = defineStore("aiContext", () => {
         result[toSnake(key)] = val;
       }
     }
+    // 显式携带 selected_case_ids / current_case_id，即便为空也要通知后端清除旧值
+    if (!("selected_case_ids" in result)) {
+      result["selected_case_ids"] = [];
+    }
+    if (!("current_case_id" in result)) {
+      result["current_case_id"] = null;
+    }
     return result;
   });
 

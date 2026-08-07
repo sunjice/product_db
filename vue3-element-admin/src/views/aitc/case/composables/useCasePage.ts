@@ -21,20 +21,34 @@ interface StepForm {
 export function useCasePage() {
   // ── 项目 ──
   const selectedProjectId = ref("");
+  const selectedProjectName = ref("");
   const sidebarCollapsed = ref(false);
   const projectOptions = ref<OptionItem[]>([]);
 
   async function loadProjectOptions() {
     const res = await ProjectAPI.getOptions();
     projectOptions.value = res || [];
+    _syncProjectName();
+  }
+
+  function _syncProjectName() {
+    const id = selectedProjectId.value;
+    if (!id) {
+      selectedProjectName.value = "";
+      return;
+    }
+    const found = projectOptions.value.find((p) => String(p.value) === String(id));
+    selectedProjectName.value = found?.label || "";
   }
 
   // ── 套件树状态 ──
   const selectedSuiteId = ref("");
+  const selectedSuiteName = ref("");
   const currentCaseId = ref<number | null>(null);
 
   function onProjectChange() {
     selectedSuiteId.value = "";
+    selectedSuiteName.value = "";
     queryParams.suiteId = undefined;
     viewMode.value = "table";
     viewingCase.value = null;
@@ -42,6 +56,7 @@ export function useCasePage() {
     total.value = 0;
     selectedIds.value = [];
     currentCaseId.value = null;
+    _syncProjectName();
   }
 
   function onTreeClick(node: any) {
@@ -53,12 +68,17 @@ export function useCasePage() {
         viewMode.value = "detail";
       });
       if (node.parent_id != null) {
-        selectedSuiteId.value = String(node.parent_id);
+        const parentId = String(node.parent_id);
+        if (selectedSuiteId.value !== parentId) {
+          selectedSuiteId.value = parentId;
+          selectedSuiteName.value = ""; // 用例节点不保存模块名
+        }
       }
       currentCaseId.value = caseId;
       return;
     }
     selectedSuiteId.value = String(node.id);
+    selectedSuiteName.value = node.label || node.name || "";
     queryParams.suiteId = String(node.id) as any;
     viewMode.value = "table";
     selectedIds.value = [];
@@ -308,10 +328,12 @@ export function useCasePage() {
   const aiContextStore = useAiContextStore();
 
   function initAiContext() {
-    watch([selectedProjectId, selectedSuiteId, selectedIds, currentCaseId], () => {
+    watch([selectedProjectId, selectedSuiteId, selectedIds, currentCaseId, selectedProjectName, selectedSuiteName], () => {
       aiContextStore.update({
         projectId: selectedProjectId.value ? Number(selectedProjectId.value) : null,
+        projectName: selectedProjectName.value || null,
         suiteId: selectedSuiteId.value ? Number(selectedSuiteId.value) : null,
+        suiteName: selectedSuiteName.value || null,
         selectedCaseIds: selectedIds.value.map((id) => Number(id)),
         currentCaseId: currentCaseId.value != null ? Number(currentCaseId.value) : null,
       });

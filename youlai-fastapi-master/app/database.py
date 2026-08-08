@@ -46,8 +46,8 @@ class BaseIdMixin:
 
 engine = create_async_engine(
     settings.DATABASE_URL,
-    pool_size=20,
-    max_overflow=10,
+    pool_size=50,
+    max_overflow=30,
     pool_recycle=3600,
     pool_pre_ping=True,
     echo=settings.DEBUG,

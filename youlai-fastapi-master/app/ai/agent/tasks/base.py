@@ -75,6 +75,7 @@ class BaseTask(ABC):
         output: dict,
         confirm_status: int,
         final_content: str = "",
+        is_core: bool | None = None,
     ) -> None:
         """确认时将 AI 输出结果写入实际数据表。"""
         ...

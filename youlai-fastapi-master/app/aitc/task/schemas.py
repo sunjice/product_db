@@ -1,5 +1,6 @@
 """任务域 — Pydantic Schemas（Task / TaskItem / Review）。"""
 
+from datetime import datetime
 from typing import Any
 
 from pydantic import BaseModel, Field
@@ -14,7 +15,6 @@ class TaskCreate(BaseModel):
     task_type: str = Field(..., description="core_select/case_review/script_gen")
     project_id: BigId = Field(..., description="项目ID")
     suite_id: BigId | None = Field(default=None, description="目标套件ID（未指定case_ids时必填）")
-    sample_ids: list[BigId] = Field(default_factory=list, description="样本ID列表")
     spec_ids: list[BigId] | None = Field(default=None, description="规范ID列表（核心挑选时使用）")
     ai_config_id: BigId | None = Field(default=None, description="AI配置ID")
     case_ids: list[BigId] | None = Field(default=None, description="指定用例ID列表，为空则取全子树")
@@ -34,7 +34,6 @@ class TaskVO(BaseModel):
     project_name: str = ""
     suite_id: BigId | None = None
     suite_name: str = ""
-    sample_ids: list = Field(default_factory=list)
     spec_ids: list | None = Field(default=None)
     ai_config_id: BigId | None = None
     model: str | None = None
@@ -55,12 +54,17 @@ class TaskItemVO(BaseModel):
     task_id: BigId | None = None
     case_id: BigId | None = None
     case_name: str = ""
+    project_prefix: str = ""
+    external_id: str | None = None
+    purpose: str = ""
+    importance: int = 2
     output: dict | None = None
     item_status: int = 0
     confirm_status: int = 0
     final_content: str | None = None
     reviewed_by: str | None = None
     review_time: str | None = None
+    is_core: bool | None = Field(default=None, description="审核后的最终核心决策（core_select）")
     model_config = {"from_attributes": True}
 
 
@@ -69,6 +73,7 @@ class TaskConfirmItem(BaseModel):
     item_id: BigId
     confirm_status: int = Field(..., description="1-采纳 2-忽略 3-编辑采纳")
     final_content: str | None = None
+    is_core: bool | None = Field(default=None, description="core_select 专用：最终核心决策")
 
 
 class TaskConfirmReq(BaseModel):
@@ -81,15 +86,16 @@ class ReviewRecordVO(BaseModel):
     task_id: BigId | None = None
     task_item_id: BigId | None = None
     case_id: BigId | None = None
+    case_name: str | None = None
     review_action: str = ""
     field_name: str | None = None
     before_value: str | None = None
     after_value: str | None = None
     reviewer: str | None = None
     reviewer_ip: str | None = None
-    review_time: str | None = None
+    review_time: datetime | None = None
     memo: str | None = None
-    create_time: str | None = None
+    create_time: datetime | None = None
     model_config = {"from_attributes": True}
 
 
@@ -102,7 +108,7 @@ class ReviewFieldItem(BaseModel):
     """逐字段审核请求。"""
     field_name: str = Field(..., description="字段名：name/summary/preconditions/steps/test_data")
     action: str = Field(..., description="accept/ignore")
-    edited_value: str | None = Field(default=None, description="编辑采纳后的值")
+    edited_value: Any | None = Field(default=None, description="编辑采纳后的值（文本/JSON数组均可）")
 
 
 class ReviewItemReq(BaseModel):

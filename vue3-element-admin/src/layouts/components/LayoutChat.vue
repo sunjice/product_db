@@ -1,18 +1,28 @@
 <template>
-  <!-- 收起状态：只显示一个悬浮按钮 -->
-  <div v-if="!isOpen" class="layout-chat-collapsed" @click="toggle">
+  <!-- 收起状态：可拖动悬浮按钮 -->
+  <div
+    v-if="!isOpen"
+    ref="collapsedRef"
+    class="layout-chat-collapsed"
+    :style="collapsedStyle"
+    @mousedown="onCollapsedMouseDown"
+  >
     <el-icon :size="20"><ChatDotRound /></el-icon>
     <span class="collapsed-label">AI</span>
   </div>
 
-  <!-- 展开状态：可拖动浮窗 -->
+  <!-- 展开状态：浮窗 or 抽屉 -->
   <div
     v-else
-    class="layout-chat-float"
-    :style="floatStyle"
+    :class="['chat-panel', viewMode === 'drawer' ? 'chat-panel-drawer' : 'chat-panel-float']"
+    :style="viewMode === 'float' ? floatStyle : { width: drawerWidth + 'px' }"
   >
-    <!-- 顶部（可拖拽标题栏） -->
-    <div class="chat-panel-header" @mousedown="startDrag">
+    <!-- 顶部标题栏 -->
+    <div
+      class="chat-panel-header"
+      :class="{ 'is-draggable': viewMode === 'float' }"
+      @mousedown="viewMode === 'float' ? startDrag($event) : undefined"
+    >
       <div v-if="showHistory" class="header-title">
         <el-button text @click="showHistory = false">
           <el-icon><ArrowLeft /></el-icon>
@@ -37,6 +47,9 @@
         <el-button v-if="!showHistory" text circle @click="newSession" title="新对话">
           <el-icon><Plus /></el-icon>
         </el-button>
+        <el-button text circle @click="toggleViewMode" :title="viewMode === 'float' ? '切换为抽屉模式' : '切换为浮窗模式'">
+          <el-icon><component :is="viewMode === 'float' ? DArrowLeft : Grid" /></el-icon>
+        </el-button>
         <el-button text circle @click="toggle" title="收起">
           <el-icon><DArrowRight /></el-icon>
         </el-button>
@@ -60,7 +73,7 @@
             <div class="history-group-label">{{ group.label }}</div>
             <div
               v-for="s in group.sessions"
-              :key="s.id"
+              :key="s.id!"
               class="history-item"
               @click="onHistorySelect(s.id!)"
             >
@@ -79,7 +92,11 @@
     <!-- 正常聊天区域 -->
     <template v-else>
       <!-- 消息列表 -->
-      <div class="chat-panel-messages" ref="msgListRef">
+      <div
+        class="chat-panel-messages"
+        ref="msgListRef"
+        @scroll="onMsgScroll"
+      >
         <div v-if="!messages.length && !streaming" class="welcome">
           <div class="welcome-brand">
             <el-icon :size="26" color="var(--el-color-primary)"><ChatDotRound /></el-icon>
@@ -106,21 +123,28 @@
         </div>
 
         <ChatMessage
-          v-for="msg in messages"
-          :key="msg.id || msg.create_time"
+          v-for="(msg, idx) in messages"
+          :key="msg.id || `${msg.role}-${idx}-${msg.create_time}`"
           :msg="msg"
           @viewDraft="onViewDraft"
           @confirmDraft="onConfirmDraft"
           @confirmTask="onConfirmTask"
           @cancelTask="onCancelTask"
           @submitClarify="onSubmitClarify"
+          @retry="onRetry"
         />
 
         <StreamingBubble
           v-if="streaming"
           :streaming-text="streamingText"
           :thinking-step="thinkingStep"
+          :tool-steps="toolSteps"
         />
+      </div>
+
+      <!-- 回到底部按钮 -->
+      <div v-if="showScrollBottom" class="scroll-bottom-btn" @click="scrollToBottom">
+        <el-icon><ArrowDown /></el-icon>
       </div>
 
       <!-- 任务列表（有任务时才显示） -->
@@ -166,15 +190,27 @@
           <el-input
             v-model="text"
             type="textarea"
-            :placeholder="inputPlaceholder"
+            :placeholder="inputPlaceholder as string"
             :disabled="streaming"
             @keydown="onKeydown"
             class="fill-textarea"
           />
+          <!-- 流式输出中显示停止按钮，否则显示发送按钮 -->
           <el-button
+            v-if="streaming"
+            class="send-btn-float stop-btn"
+            type="danger"
+            @click="onStop"
+            circle
+            title="停止生成"
+          >
+            <el-icon><VideoPause /></el-icon>
+          </el-button>
+          <el-button
+            v-else
             class="send-btn-float"
             type="primary"
-            :disabled="!text.trim() || streaming"
+            :disabled="!text.trim()"
             @click="send"
             circle
           >
@@ -184,19 +220,28 @@
       </div>
     </template>
 
-    <!-- 四边 + 四角隐形缩放区域 -->
-    <div v-for="d in RESIZE_DIRS" :key="d" :class="['resize-handle', d]" @mousedown.stop="startResize($event, d)" />
+    <!-- 四边 + 四角隐形缩放区域（仅浮窗模式） -->
+    <div v-if="viewMode === 'float'" v-for="d in RESIZE_DIRS" :key="d" :class="['resize-handle', d]" @mousedown.stop="startResize($event, d)" />
+
+    <!-- 抽屉模式左侧宽度拖拽条 -->
+    <div
+      v-if="viewMode === 'drawer'"
+      class="drawer-resize-handle"
+      @mousedown="startDrawerResize"
+    >
+      <div class="dragger-bar" />
+    </div>
   </div>
 </template>
 
 <script setup lang="ts">
-import { ref, watch, nextTick, computed } from "vue"
+import { ref, shallowRef, watch, nextTick, computed } from "vue"
 import { useRoute } from "vue-router"
 import { ElMessage, ElMessageBox } from "element-plus"
 import {
-  ChatDotRound, Plus, DArrowRight, Promotion, ArrowLeft, Clock, Delete, Search, Edit,
+  ChatDotRound, Plus, DArrowRight, DArrowLeft, Promotion, ArrowLeft, ArrowDown, Clock, Delete, Search, Edit,
   FolderChecked, DocumentChecked, EditPen, CircleCheck,
-  Grid, Opportunity, Collection, Location, Close,
+  Grid, Opportunity, Collection, Location, Close, VideoPause,
 } from "@element-plus/icons-vue"
 import ChatMessage from "./chat/ChatMessage.vue"
 import TaskListPanel from "./chat/TaskListPanel.vue"
@@ -209,12 +254,18 @@ import type { ChatSession } from "@/api/chat/types"
 
 // ── 全局状态（组件实例不会被销毁，因为 LayoutMain 不会切换） ──
 const isOpen = ref(false)
+const viewMode = ref<'float' | 'drawer'>('drawer') // 浮窗 / 抽屉模式
 const panelWidth = ref(480)
 const panelHeight = ref(580)
+const drawerWidth = ref(480) // 抽屉模式独立宽度
 const floatX = ref(window.innerWidth - panelWidth.value - 20)
 const floatY = ref(window.innerHeight - panelHeight.value - 20)
 const text = ref("")
 const msgListRef = ref<HTMLElement>()
+
+// 收起态浮标可拖动位置
+const collapsedTop = ref(window.innerHeight * 0.4)
+const collapsedRef = ref<HTMLElement>()
 
 const floatStyle = computed(() => ({
   width: panelWidth.value + "px",
@@ -222,6 +273,30 @@ const floatStyle = computed(() => ({
   left: floatX.value + "px",
   top: floatY.value + "px",
 }))
+
+const collapsedStyle = computed(() => ({
+  top: collapsedTop.value + "px",
+}))
+
+// ── 收起态浮标拖动（拖拽和点击兼容） ──
+let cStartY = 0, cStartTop = 0, cMoved = false
+function onCollapsedMouseDown(e: MouseEvent) {
+  cStartY = e.clientY
+  cStartTop = collapsedTop.value
+  cMoved = false
+  document.addEventListener("mousemove", onCollapsedDrag)
+  document.addEventListener("mouseup", onCollapsedUp)
+}
+function onCollapsedDrag(e: MouseEvent) {
+  const dy = Math.abs(e.clientY - cStartY)
+  if (dy > 3) cMoved = true // 超过3px算拖拽
+  collapsedTop.value = Math.min(Math.max(cStartTop + (e.clientY - cStartY), 60), window.innerHeight - 120)
+}
+function onCollapsedUp() {
+  document.removeEventListener("mousemove", onCollapsedDrag)
+  document.removeEventListener("mouseup", onCollapsedUp)
+  if (!cMoved) toggle() // 没移动过 = 点击打开
+}
 
 const route = useRoute()
 const aiContextStore = useAiContextStore()
@@ -233,15 +308,19 @@ const {
   streaming,
   streamingText,
   thinkingStep,
+  toolSteps,
   pageContext,
   createSession,
   selectSession,
   updateSession,
   deleteSession,
   sendMessage,
+  stopGeneration,
+  retryLastMessage,
   confirmDraft,
   confirmCreateTask,
   cancelTask,
+  submitClarifyAnswers,
   viewDraft,
   init,
 } = useChat()
@@ -370,6 +449,30 @@ function toggle() {
   }
 }
 
+/** 浮窗 ↔ 抽屉切换 */
+function toggleViewMode() {
+  viewMode.value = viewMode.value === 'float' ? 'drawer' : 'float'
+}
+
+// ── 抽屉左侧宽度拖拽 ──
+const MIN_DRAWER_W = 320, MAX_DRAWER_W = 840
+let dwStartX = 0, dwStartW = 0
+function startDrawerResize(e: MouseEvent) {
+  e.preventDefault()
+  dwStartX = e.clientX
+  dwStartW = drawerWidth.value
+  document.addEventListener("mousemove", onDrawerResizeMove)
+  document.addEventListener("mouseup", onDrawerResizeEnd)
+}
+function onDrawerResizeMove(e: MouseEvent) {
+  const dx = dwStartX - e.clientX // 向左拖 = 变宽
+  drawerWidth.value = Math.min(Math.max(dwStartW + dx, MIN_DRAWER_W), MAX_DRAWER_W)
+}
+function onDrawerResizeEnd() {
+  document.removeEventListener("mousemove", onDrawerResizeMove)
+  document.removeEventListener("mouseup", onDrawerResizeEnd)
+}
+
 // ── 监听路由/Store，同步页面上下文（route query 优先） ──
 watch(
   [() => route.fullPath, () => aiContextStore.contextJson],
@@ -400,11 +503,22 @@ async function send() {
   await sendMessage(val)
 }
 
-function onKeydown(e: KeyboardEvent) {
+function onKeydown(e: Event | KeyboardEvent) {
+  if (!(e instanceof KeyboardEvent)) return
   if (e.key === "Enter" && !e.shiftKey) {
     e.preventDefault()
     send()
   }
+}
+
+// ── 停止生成 ──
+function onStop() {
+  stopGeneration()
+}
+
+// ── 重试 ──
+async function onRetry() {
+  await retryLastMessage()
 }
 
 // ── 上下文显示行 ──
@@ -457,7 +571,7 @@ const contextBarItems = computed<ContextItem[]>(() => {
 
 const inputPlaceholder = computed(() => {
   const page = pageContext.value?.current_page
-  if (page === "case") return "提问、@（提及）或使用“/”进行操作"
+  if (page === "case") return `提问、@（提及）或使用" / "进行操作`
   return "有什么我可以帮你的？"
 })
 
@@ -470,7 +584,7 @@ interface QuickAction {
   bg: string
 }
 
-const quickActions = ref<QuickAction[]>([
+const quickActions = shallowRef<QuickAction[]>([
   {
     title: "挑选核心用例",
     desc: "从当前模块智能挑选最重要的用例",
@@ -522,17 +636,39 @@ function onCancelTask(metadata: Record<string, any>) {
   cancelTask(metadata)
 }
 
-// ── 澄清卡片提交：将答案作为新消息发送给 LLM ──
-async function onSubmitClarify(text: string) {
+// ── 澄清卡片提交：将答案作为新消息发送给 LLM，并持久化答案状态 ──
+async function onSubmitClarify(text: string, answers: Record<string, string>) {
   await sendMessage(text)
+  submitClarifyAnswers(answers)
 }
 
-// ── 自动滚动 ──
+// ── 滚动控制 ──
+const userScrolledUp = ref(false)
+const showScrollBottom = ref(false)
+const scrollThrottle = ref(false)
+
+function onMsgScroll() {
+  const el = msgListRef.value
+  if (!el) return
+  const dist = el.scrollHeight - el.scrollTop - el.clientHeight
+  userScrolledUp.value = dist > 80
+  showScrollBottom.value = dist > 120
+}
+
+function scrollToBottom() {
+  const el = msgListRef.value
+  if (!el) return
+  el.scrollTop = el.scrollHeight
+  userScrolledUp.value = false
+  showScrollBottom.value = false
+}
+
+// 自动滚动（用户没有手动上翻时）
 watch(
   () => [messages.value.length, streamingText.value],
   async () => {
     await nextTick()
-    if (msgListRef.value) {
+    if (!userScrolledUp.value && msgListRef.value) {
       msgListRef.value.scrollTop = msgListRef.value.scrollHeight
     }
   }
@@ -547,25 +683,28 @@ defineExpose({ toggle, isOpen })
 </script>
 
 <style scoped>
-/* 收起态：右侧悬浮按钮 */
+/* ── 收起态：右侧可拖动悬浮按钮 ── */
 .layout-chat-collapsed {
   position: fixed;
   right: 0;
-  top: 50%;
-  transform: translateY(-50%);
   width: 36px;
   padding: 12px 0;
   background: var(--el-color-primary);
   color: #fff;
   border-radius: 8px 0 0 8px;
-  cursor: pointer;
+  cursor: grab;
   display: flex;
   flex-direction: column;
   align-items: center;
   gap: 4px;
   z-index: 2000;
   box-shadow: -2px 0 8px rgba(0, 0, 0, 0.15);
-  transition: all 0.2s;
+  transition: width 0.2s, box-shadow 0.2s;
+  user-select: none;
+}
+
+.layout-chat-collapsed:active {
+  cursor: grabbing;
 }
 
 .layout-chat-collapsed:hover {
@@ -577,24 +716,81 @@ defineExpose({ toggle, isOpen })
   font-size: 11px;
   writing-mode: vertical-rl;
   letter-spacing: 2px;
+  pointer-events: none;
 }
 
-/* 展开态：可拖动浮窗 */
-.layout-chat-float {
+/* ── 展开态共用基类 ── */
+.chat-panel {
   position: fixed;
   background: var(--el-bg-color);
   border: 1px solid var(--el-border-color-lighter);
-  border-radius: 16px;
   display: flex;
   flex-direction: column;
   z-index: 2000;
-  box-shadow: 0 12px 40px rgba(0, 0, 0, 0.1), 0 4px 12px rgba(0, 0, 0, 0.04);
   overflow: hidden;
+}
+
+/* ── 浮窗模式 ── */
+.chat-panel-float {
+  border-radius: 16px;
+  box-shadow: 0 12px 40px rgba(0, 0, 0, 0.1), 0 4px 12px rgba(0, 0, 0, 0.04);
   transition: box-shadow 0.2s;
 }
 
-.layout-chat-float:hover {
+.chat-panel-float:hover {
   box-shadow: 0 16px 48px rgba(0, 0, 0, 0.12), 0 6px 16px rgba(0, 0, 0, 0.05);
+}
+
+/* ── 抽屉模式：右侧全高面板 ── */
+.chat-panel-drawer {
+  right: 0;
+  top: 0;
+  bottom: 0;
+  border-radius: 0;
+  border-right: none;
+  box-shadow: -4px 0 24px rgba(0, 0, 0, 0.1);
+  animation: slideInRight 0.25s ease-out;
+}
+
+/* ── 抽屉模式左侧拖拽条 ── */
+.drawer-resize-handle {
+  position: absolute;
+  left: 0;
+  top: 0;
+  bottom: 0;
+  width: 6px;
+  cursor: col-resize;
+  z-index: 11;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  transition: background 0.15s;
+}
+
+.drawer-resize-handle:hover {
+  background: rgba(var(--el-color-primary-rgb, 64 158 255), 0.12);
+}
+
+.drawer-resize-handle:active {
+  background: rgba(var(--el-color-primary-rgb, 64 158 255), 0.22);
+}
+
+.dragger-bar {
+  width: 3px;
+  height: 32px;
+  border-radius: 2px;
+  background: var(--el-border-color-dark);
+  opacity: 0;
+  transition: opacity 0.15s;
+}
+
+.drawer-resize-handle:hover .dragger-bar {
+  opacity: 1;
+}
+
+@keyframes slideInRight {
+  from { transform: translateX(100%); }
+  to { transform: translateX(0); }
 }
 
 /* 缩放热区 */
@@ -621,9 +817,12 @@ defineExpose({ toggle, isOpen })
   border-bottom: 1px solid var(--el-border-color-lighter);
   background: var(--el-bg-color);
   flex-shrink: 0;
-  cursor: move;
   user-select: none;
   min-height: 44px;
+}
+
+.chat-panel-header.is-draggable {
+  cursor: move;
 }
 
 .header-title {
@@ -681,6 +880,7 @@ defineExpose({ toggle, isOpen })
   flex: 1;
   overflow-y: auto;
   padding: 2px 0;
+  position: relative;
 }
 
 .welcome {
@@ -870,6 +1070,36 @@ defineExpose({ toggle, isOpen })
   font-size: 12px;
 }
 
+/* ── 回到底部按钮 ── */
+.scroll-bottom-btn {
+  position: absolute;
+  bottom: 80px;
+  left: 50%;
+  transform: translateX(-50%);
+  width: 32px;
+  height: 32px;
+  border-radius: 50%;
+  background: var(--el-bg-color);
+  border: 1px solid var(--el-border-color);
+  box-shadow: 0 2px 8px rgba(0, 0, 0, 0.1);
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  cursor: pointer;
+  z-index: 10;
+  transition: all 0.2s;
+}
+
+.scroll-bottom-btn:hover {
+  box-shadow: 0 4px 12px rgba(0, 0, 0, 0.15);
+  transform: translateX(-50%) scale(1.05);
+}
+
+.scroll-bottom-btn .el-icon {
+  font-size: 16px;
+  color: var(--el-text-color-secondary);
+}
+
 .chat-panel-input {
   padding: 10px 12px 12px;
   flex-shrink: 0;
@@ -927,6 +1157,15 @@ defineExpose({ toggle, isOpen })
 
 .send-btn-float.is-disabled {
   opacity: 0.5;
+}
+
+.stop-btn {
+  animation: stopPulse 1.5s infinite;
+}
+
+@keyframes stopPulse {
+  0%, 100% { box-shadow: 0 0 0 0 var(--el-color-danger-light-5); }
+  50% { box-shadow: 0 0 0 4px var(--el-color-danger-light-7); }
 }
 
 /* 历史面板 */

@@ -97,7 +97,7 @@ def make_get_suite_tree_tool(ctx: ToolContext) -> StructuredTool:
 
     async def run(project_id: int, **kwargs) -> str:
         suites = await _db_get_suite_tree(ctx.db, project_id)
-        tree = [{"id": s.id, "name": s.name, "parent_id": s.parent_id, "tree_path": s.tree_path} for s in suites]
+        tree = [{"id": s.id, "name": s.name, "parent_id": s.parent_id, "tree_path": s.tree_path, "description": s.description or ""} for s in suites]
         return json.dumps({"success": True, "suites": tree, "total": len(tree)}, ensure_ascii=False)
 
     return StructuredTool(

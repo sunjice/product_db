@@ -6,24 +6,18 @@
           <el-option v-for="p in projectOptions" :key="p.value" :label="p.label" :value="String(p.value)" />
         </el-select>
         <el-select v-model="queryParams.taskType" placeholder="任务类型" clearable style="width: 140px" @change="loadTasks">
-          <el-option label="挑选核心" value="core_select" />
-          <el-option label="用例审核" value="case_review" />
-          <el-option label="生成脚本" value="script_gen" />
+          <el-option v-for="(item, key) in TASK_TYPE_MAP" :key="key" :label="item.label" :value="key" />
         </el-select>
         <el-select v-model="queryParams.status" placeholder="状态" clearable style="width: 120px" @change="loadTasks">
-          <el-option label="排队" :value="0" />
-          <el-option label="运行中" :value="1" />
-          <el-option label="已完成" :value="2" />
-          <el-option label="失败" :value="3" />
-          <el-option label="已确认" :value="4" />
+          <el-option v-for="(item, key) in TASK_STATUS_MAP" :key="key" :label="item.label" :value="Number(key)" />
         </el-select>
         <el-button type="primary" @click="loadTasks">查询</el-button>
-        <el-switch v-model="autoRefresh" active-text="自动刷新" size="small" style="margin-left: 8px" />
+        <!-- <el-switch v-model="autoRefresh" active-text="自动刷新" size="small" style="margin-left: 8px" /> -->
       </div>
 
       <el-table :data="tableData" v-loading="loading" border stripe size="small">
-        <el-table-column prop="id" label="任务ID" width="80" />
-        <el-table-column prop="task_type" label="任务类型" width="120" align="center">
+        <el-table-column prop="id" label="任务ID" width="70" />
+        <el-table-column prop="task_type" label="任务类型" width="100" align="center">
           <template #default="{ row }">
             <el-tag :type="taskTypeTag(row.task_type)" size="small">
               {{ taskTypeLabel(row.task_type) }}
@@ -31,8 +25,8 @@
           </template>
         </el-table-column>
         <el-table-column prop="project_name" label="项目" width="140" show-overflow-tooltip />
-        <el-table-column prop="suite_name" label="套件" min-width="180" show-overflow-tooltip />
-        <el-table-column label="状态" width="90" align="center">
+        <el-table-column prop="suite_name" label="模块" min-width="180" show-overflow-tooltip />
+        <el-table-column label="状态" width="70" align="center">
           <template #default="{ row }">
             <el-tag :type="statusTag(row.status)" size="small">{{ statusLabel(row.status) }}</el-tag>
           </template>
@@ -48,26 +42,28 @@
           </template>
         </el-table-column>
         <el-table-column prop="create_by" label="创建人" width="90" />
-        <el-table-column prop="create_time" label="创建时间" width="160" />
+        <el-table-column prop="create_time" label="创建时间" width="140" />
         <el-table-column label="操作" width="180" fixed="right">
           <template #default="{ row }">
-            <el-button text type="primary" size="small" @click="goDetail(row)">详情</el-button>
-            <el-button
-              v-if="row.status === TaskStatusEnum.COMPLETED || row.status === TaskStatusEnum.FAILED || row.status === TaskStatusEnum.CONFIRMED"
-              text type="danger" size="small"
-              v-hasPerm="'aitc:task:create'" @click="rerunTask(row)"
-            >
-              重跑
-            </el-button>
-            <el-button
-              v-if="row.status === TaskStatusEnum.COMPLETED" text type="warning" size="small"
-              v-hasPerm="'aitc:task:confirm'" @click="goReview(row)"
-            >
-              审核结果
-            </el-button>
-            <el-button text type="primary" size="small" @click="refreshProgress(row)">
-              刷新
-            </el-button>
+            <div class="ops-btns">
+              <el-button text type="primary" size="small" @click="goDetail(row)">详情</el-button>
+              <el-button
+                v-if="row.status === TaskStatusEnum.COMPLETED || row.status === TaskStatusEnum.FAILED || row.status === TaskStatusEnum.CONFIRMED"
+                text type="danger" size="small"
+                v-hasPerm="'aitc:task:create'" @click="rerunTask(row)"
+              >
+                重跑
+              </el-button>
+              <el-button
+                v-if="row.status === TaskStatusEnum.COMPLETED" text type="warning" size="small"
+                v-hasPerm="'aitc:task:confirm'" @click="goReview(row)"
+              >
+                审核
+              </el-button>
+              <el-button text type="primary" size="small" @click="refreshProgress(row)">
+                刷新
+              </el-button>
+            </div>
           </template>
         </el-table-column>
       </el-table>
@@ -98,8 +94,9 @@ import TaskAPI from "@/api/aitc/task";
 import type { OptionItem, PageResult } from "@/api/common";
 import type { TaskVO, TaskQueryParams, TaskItemVO } from "@/api/aitc/task";
 import { TaskStatusEnum, ItemStatusEnum } from "@/enums/aitc";
-import { taskTypeLabel, taskTypeTag, statusLabel, statusTag } from "../constants";
-import { useTaskPolling } from "./composables/useTaskPolling";
+import { TASK_TYPE_MAP, TASK_STATUS_MAP, taskTypeLabel, taskTypeTag, statusLabel, statusTag } from "../constants";
+import { useTaskPolling } from "./shared/composables/useTaskPolling";
+import { resolveReviewPath } from "./shared/utils/taskRouter";
 
 const router = useRouter();
 
@@ -175,7 +172,20 @@ function goDetail(row: TaskVO) {
 }
 
 function goReview(row: TaskVO) {
-  router.push(`/aitc/tasks/${row.id}`);
+  // 异步加载子项，定位第一个可审核项后再跳转
+  (async () => {
+    try {
+      const items = await TaskAPI.getItems(String(row.id)) as TaskItemVO[];
+      const successItems = items?.filter(i => i.item_status === ItemStatusEnum.SUCCESS) || [];
+      if (successItems.length > 0) {
+        router.push(resolveReviewPath(row.task_type, String(row.id), String(successItems[0].id)));
+      } else {
+        router.push(`/aitc/tasks/${row.id}`);
+      }
+    } catch {
+      router.push(`/aitc/tasks/${row.id}`);
+    }
+  })();
 }
 
 // ── 初始化 ──
@@ -188,5 +198,12 @@ onMounted(async () => {
 <style scoped>
 .aitc-task-page {
   padding: 4px;
+}
+.ops-btns {
+  display: flex;
+  align-items: center;
+}
+.ops-btns .el-button + .el-button {
+  margin-left: 0;
 }
 </style>

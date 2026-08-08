@@ -29,8 +29,14 @@ async def lifespan(app: FastAPI):
     scheduler = get_scheduler()
     await scheduler.start()
 
+    # 启动 LLM 日志定时清理（每天凌晨 3:00 删除 90 天前日志）
+    from app.ai.llm_log.cleanup import get_llm_log_cleanup
+    cleanup = get_llm_log_cleanup()
+    await cleanup.start()
+
     yield
 
+    await cleanup.stop()
     await scheduler.stop()
     await close_redis()
     logger.info("youlai-fastapi shutdown complete")

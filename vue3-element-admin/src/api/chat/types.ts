@@ -31,7 +31,7 @@ export interface ChatMessage {
   id: number | null
   session_id: number | null
   role: 'user' | 'assistant' | 'system'
-  msg_type: 'text' | 'action_card' | 'task_card' | 'draft_card' | 'clarify_card' | 'help_card' | 'confirm_card'
+  msg_type: 'text' | 'action_card' | 'task_card' | 'draft_card' | 'clarify_card' | 'help_card' | 'confirm_card' | 'error'
   content: string
   metadata_json: Record<string, any> | null
   draft_id: number | null
@@ -87,6 +87,13 @@ export interface ConfirmCreateTaskReq {
   project_id: number
   suite_id: number
   case_ids?: number[] | null
+  selected_option?: string | null
+}
+
+/** 更新卡片状态 */
+export interface UpdateCardStatusReq {
+  msg_type: string
+  metadata: Record<string, any>
 }
 
 // ═══════════════ SSE 事件 ═══════════════

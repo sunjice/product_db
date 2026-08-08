@@ -158,6 +158,7 @@ class CaseService:
         for s in suites:
             vo = SuiteNodeVO(
                 id=s.id, label=s.name, name=s.name,
+                description=s.description,
                 project_id=s.project_id, parent_id=s.parent_id,
                 sort_order=s.sort_order, case_count=case_counts.get(s.id, 0),
             )
@@ -237,6 +238,7 @@ class CaseService:
         for s in child_suites:
             children.append(SuiteNodeVO(
                 id=s.id, label=s.name, name=s.name,
+                description=s.description,
                 project_id=s.project_id, project_prefix=project_prefix,
                 parent_id=s.parent_id,
                 sort_order=s.sort_order, case_count=case_counts.get(s.id, 0),
@@ -645,6 +647,7 @@ class CaseService:
             pending_cases = suite_case_pending.get(s.id, set())
             vo = PendingSuiteNodeVO(
                 id=s.id, label=s.name, name=s.name,
+                description=s.description,
                 project_id=s.project_id, parent_id=s.parent_id,
                 sort_order=s.sort_order,
                 case_count=0,
@@ -905,11 +908,11 @@ class CaseService:
 
     # ═══════════════ Case 写操作（AI 结果写入） ═══════════════
 
-    async def apply_core_select_result(self, case_id: int, reason: str) -> None:
+    async def apply_core_select_result(self, case_id: int, reason: str = "", is_core: bool = True) -> None:
         """AI 核心用例挑选后写入标记。"""
         case = await self.db.get(AiTcCase, case_id)
         if case:
-            case.is_core = 1
+            case.is_core = 1 if is_core else 0
             case.core_reason = reason[:512] if reason else None
             case.core_source = CoreSource.AI
             case.update_time = datetime.now()

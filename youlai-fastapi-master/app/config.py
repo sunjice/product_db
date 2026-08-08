@@ -62,6 +62,9 @@ class Settings(BaseSettings):
     AI_MAX_TOKENS: int = 4096
     AI_BATCH_SIZE: int = 30
 
+    # ── LLM 日志清理 ──
+    LLM_LOG_RETENTION_DAYS: int = 180  # LLM 日志保留天数，超期自动删除
+
     # ── 调试 ──
     DEBUG: bool = False
     LOG_LEVEL: str = "INFO"

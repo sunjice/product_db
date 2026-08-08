@@ -13,6 +13,7 @@ import type {
   ContextSetReq,
   SkillInfo,
   ConfirmCreateTaskReq,
+  UpdateCardStatusReq,
 } from "./types"
 
 // ═══════════════ 会话 ═══════════════
@@ -74,7 +75,7 @@ export const ChatMessageAPI = {
   },
 
   /** 发送消息 — 返回 SSE Stream */
-  send(sessionId: number, data: MessageSendReq): Promise<Response> {
+  send(sessionId: number, data: MessageSendReq, signal?: AbortSignal): Promise<Response> {
     const baseURL = import.meta.env.VITE_APP_BASE_API || ""
     const token = AuthStorage.getAccessToken()
     return fetch(`${baseURL}/api/v1/aitc/chat/sessions/${sessionId}/messages`, {
@@ -84,6 +85,7 @@ export const ChatMessageAPI = {
         ...(token ? { Authorization: `Bearer ${token}` } : {}),
       },
       body: JSON.stringify(data),
+      signal,
     })
   },
 
@@ -92,6 +94,15 @@ export const ChatMessageAPI = {
     return request({
       url: `/api/v1/aitc/chat/sessions/${sessionId}/cancel-confirm`,
       method: "post",
+    })
+  },
+
+  /** 更新卡片状态（持久化 clarify/confirm 的用户操作） */
+  updateCardStatus(sessionId: number, data: UpdateCardStatusReq) {
+    return request({
+      url: `/api/v1/aitc/chat/sessions/${sessionId}/update-card-status`,
+      method: "post",
+      data,
     })
   },
 }

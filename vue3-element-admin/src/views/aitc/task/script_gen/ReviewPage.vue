@@ -104,7 +104,7 @@ import { ElMessage } from "element-plus";
 import TaskAPI from "@/api/aitc/task";
 import type { CaseVO } from "@/api/aitc/case";
 import type { TaskItemVO } from "@/api/aitc/task";
-import { importanceLabel } from "../constants";
+import { importanceLabel } from "../../constants";
 import { ConfirmStatusEnum } from "@/enums/aitc";
 
 const route = useRoute();

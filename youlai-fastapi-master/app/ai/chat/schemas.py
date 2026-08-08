@@ -100,6 +100,14 @@ class SkillInfoVO(BaseModel):
     keywords: list[str] = Field(default_factory=list)
 
 
+# ═══════════════ 卡片状态更新 ═══════════════
+
+class UpdateCardStatusReq(BaseModel):
+    """更新会话中最后一条指定类型卡片的 metadata。"""
+    msg_type: str = Field(..., description="卡片类型 clarify_card / confirm_card")
+    metadata: dict = Field(..., description="要合并写入的元数据")
+
+
 # ═══════════════ 任务确认 ═══════════════
 
 class ConfirmCreateTaskReq(BaseModel):
@@ -108,6 +116,7 @@ class ConfirmCreateTaskReq(BaseModel):
     project_id: int = Field(..., description="项目ID")
     suite_id: int = Field(..., description="模块ID")
     case_ids: list[int] | None = Field(default=None, description="指定用例ID列表，为空则处理整个模块")
+    selected_option: str | None = Field(default=None, description="用户选中的选项ID")
 
 
 # ═══════════════ 用量日志 ═══════════════

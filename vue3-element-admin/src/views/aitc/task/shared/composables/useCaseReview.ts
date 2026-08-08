@@ -2,8 +2,8 @@
  * useCaseReview — 用例审核共享 composable
  *
  * 同时服务于：
- *   - case-review.vue（任务内逐条审核——左/右分栏）
- *   - case-review-index.vue（审核工作台——树+列表+字段表格）
+ *   - case_review/ReviewPage.vue（任务内逐条审核——左/右分栏）
+ *   - review-index.vue（审核工作台——树+列表+字段表格）
  *
  * 提取的共享逻辑：
  *   - 字段三态状态机（accept / ignore / manual）
@@ -24,13 +24,27 @@ export function displayVal(v: any): string {
 // ── 字段名中文映射 ──
 
 export const FIELD_LABEL_MAP: Record<string, string> = {
-  name: '用例名称',
+  name: '用例编号',
+  purpose: '测试目的',
   summary: '测试思想',
+  importance: '用例级别',
   preconditions: '前置条件',
   test_data: '测试数据',
   topo: '测试Topo',
   steps: '测试步骤',
 }
+
+/** 左侧原始用例详情字段顺序 */
+export const CASE_FIELD_ORDER: { key: string; label: string }[] = [
+  { key: 'name', label: '用例编号' },
+  { key: 'purpose', label: '测试目的' },
+  { key: 'summary', label: '测试思想' },
+  { key: 'importance', label: '用例级别' },
+  { key: 'preconditions', label: '前置条件' },
+  { key: 'test_data', label: '测试数据' },
+  { key: 'topo', label: '测试Topo' },
+  { key: 'steps', label: '测试步骤' },
+]
 
 export interface FieldItem {
   field_name: string
@@ -132,14 +146,23 @@ export function useCaseReview() {
   }
 
   // ── 步骤行操作 ──
-  function addStepRow() {
-    const no = editSteps.value.length + 1
-    editSteps.value = [...editSteps.value, { step_no: no, action: '', expected: '' }]
+  function removeStepAt(index: number) {
+    if (editSteps.value.length <= 1) return
+    editSteps.value = editSteps.value.filter((_: any, i: number) => i !== index)
   }
 
+  function addStepBelow(index: number) {
+    const arr = [...editSteps.value]
+    arr.splice(index + 1, 0, { step_no: 0, action: '', expected: '' })
+    editSteps.value = arr
+  }
+
+  // @deprecated 保留旧接口兼容
+  function addStepRow() {
+    addStepBelow(editSteps.value.length - 1)
+  }
   function removeStepRow() {
-    if (editSteps.value.length <= 1) return
-    editSteps.value = editSteps.value.slice(0, -1)
+    removeStepAt(editSteps.value.length - 1)
   }
 
   /** 构建提交字段列表 */
@@ -173,6 +196,8 @@ export function useCaseReview() {
     saveManualEdit,
     addStepRow,
     removeStepRow,
+    removeStepAt,
+    addStepBelow,
     buildFields,
   }
 }

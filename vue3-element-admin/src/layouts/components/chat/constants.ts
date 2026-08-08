@@ -16,5 +16,5 @@ export const TOOL_LABELS: Record<string, string> = {
 }
 
 export function toolLabel(name: string): string {
-  return TOOL_LABELS[name] || `正在执行 ${name}...`
+  return TOOL_LABELS[name] || "处理中..."
 }

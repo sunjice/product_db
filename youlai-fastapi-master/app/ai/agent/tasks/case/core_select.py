@@ -136,11 +136,23 @@ class CoreSelectTask(BaseTask):
         output: dict,
         confirm_status: int,
         final_content: str = "",
+        is_core: bool | None = None,
     ) -> None:
-        """确认：将选中的核心用例标记写入用例表。"""
-        if output.get("selected"):
-            case_svc = CaseService(svc.db)
-            await case_svc.apply_core_select_result(
-                item.case_id,
-                output.get("reason", "AI挑选")[:512],
-            )
+        """确认：将所有行的最终决策写入用例表。
+
+        未明确指定 is_core 时（兼容旧逻辑），仅 ACCEPTED→is_core=1。
+        明确指定 is_core=False 时，写入 is_core=0。
+        """
+        if is_core is None:
+            # 兼容旧调用：仅 ACCEPTED/EDITED_ACCEPTED 才写
+            if confirm_status not in (ConfirmStatus.ACCEPTED, ConfirmStatus.EDITED_ACCEPTED):
+                return
+            is_core = True
+
+        reason = (
+            output.get("reason", "").strip()
+            or final_content.strip()
+            or "人工确认"
+        )[:512]
+        case_svc = CaseService(svc.db)
+        await case_svc.apply_core_select_result(item.case_id, reason, is_core=is_core)

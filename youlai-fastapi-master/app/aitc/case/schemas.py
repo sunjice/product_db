@@ -42,6 +42,7 @@ class SuiteNodeVO(BaseModel):
     id: BigId
     label: str
     name: str = ""
+    description: str | None = None
     project_id: BigId | None = None
     project_prefix: str = ""
     parent_id: BigId = 0
@@ -59,6 +60,7 @@ class SuiteVO(BaseModel):
     parent_id: BigId = 0
     tree_path: str = ""
     name: str = ""
+    description: str | None = None
     sort_order: int = 0
     create_time: str | None = None
     update_time: str | None = None
@@ -155,6 +157,7 @@ class PendingSuiteNodeVO(BaseModel):
     id: BigId
     label: str
     name: str = ""
+    description: str | None = None
     project_id: BigId | None = None
     parent_id: BigId = 0
     sort_order: int = 0

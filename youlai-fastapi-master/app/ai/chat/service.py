@@ -136,11 +136,15 @@ class ChatService:
 
     async def update_last_confirm_card_metadata(self, session_id: int, metadata: dict) -> None:
         """找到会话中最新一条 confirm_card 消息，合并写入 metadata_json。"""
+        await self.update_last_card_metadata_by_type(session_id, "confirm_card", metadata)
+
+    async def update_last_card_metadata_by_type(self, session_id: int, msg_type: str, metadata: dict) -> None:
+        """找到会话中最新一条指定类型的消息，合并写入 metadata_json。"""
         result = await self.db.execute(
             select(ChatMessage)
             .where(
                 ChatMessage.session_id == session_id,
-                ChatMessage.msg_type == "confirm_card",
+                ChatMessage.msg_type == msg_type,
             )
             .order_by(ChatMessage.id.desc())
             .limit(1)

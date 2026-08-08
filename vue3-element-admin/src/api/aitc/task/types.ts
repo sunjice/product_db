@@ -30,7 +30,6 @@ export interface TaskVO {
   suite_id: string;
   suite_name: string;
   prompt_id?: string;
-  sample_ids: string[];
   ai_config_id?: string;
   model?: string;
   status: number;
@@ -48,18 +47,24 @@ export interface TaskItemVO {
   task_id: string;
   case_id: string;
   case_name: string;
+  project_prefix?: string;
+  external_id?: string;
+  purpose?: string;
+  importance?: number;
   output?: Record<string, any>;
   item_status: number;
   confirm_status: number;
   final_content?: string;
   reviewed_by?: string;
   review_time?: string;
+  is_core?: boolean; // 审核后的最终核心决策（core_select）
 }
 
 export interface TaskConfirmItem {
   item_id: string;
   confirm_status: number; // 1-采纳 2-忽略 3-编辑采纳
   final_content?: string;
+  is_core?: boolean; // core_select 专用：最终核心决策
 }
 
 export interface TaskConfirmReq {
@@ -85,6 +90,7 @@ export interface ReviewRecordVO {
   task_id: string;
   task_item_id: string;
   case_id: string;
+  case_name?: string;
   review_action: string;
   field_name?: string;
   before_value?: string;
@@ -101,7 +107,7 @@ export interface ReviewRecordVO {
 export interface ReviewFieldItem {
   field_name: string;
   action: string; // accept / ignore / edit_accept
-  edited_value?: string;
+  edited_value?: any; // 文本字段为 string，步骤等 JSON 字段为 array
 }
 
 export interface ReviewItemReq {

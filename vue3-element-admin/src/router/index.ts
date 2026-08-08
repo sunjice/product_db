@@ -92,14 +92,20 @@ export const constantRoutes: RouteRecordRaw[] = [
       {
         path: "aitc/tasks/:taskId(\\d+)/case-review/:itemId(\\d+)",
         name: "AitcCaseReview",
-        component: () => import("@/views/aitc/task/case-review.vue"),
+        component: () => import("@/views/aitc/task/case_review/ReviewPage.vue"),
         meta: { title: "用例逐条审核", hidden: true },
       },
       {
         path: "aitc/tasks/:taskId(\\d+)/script-review/:itemId(\\d+)",
         name: "ScriptReview",
-        component: () => import("@/views/aitc/task/script-review.vue"),
+        component: () => import("@/views/aitc/task/script_gen/ReviewPage.vue"),
         meta: { title: "脚本审核", hidden: true },
+      },
+      {
+        path: "aitc/tasks/:taskId(\\d+)/core-review",
+        name: "CoreReview",
+        component: () => import("@/views/aitc/task/core_select/ReviewPage.vue"),
+        meta: { title: "核心挑选审核", hidden: true },
       },
     ],
   },

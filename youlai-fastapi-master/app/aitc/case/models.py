@@ -40,6 +40,7 @@ class AiTcSuite(Base, BaseIdMixin, TimestampMixin, SoftDeleteMixin):
     )
     tree_path: Mapped[str] = mapped_column(String(512), default="", server_default="", comment="祖先路径如 0,1,5")
     name: Mapped[str] = mapped_column(String(128), nullable=False, comment="套件名称")
+    description: Mapped[str | None] = mapped_column(Text, comment="套件描述")
     sort_order: Mapped[int] = mapped_column(Integer, default=0, server_default="0", comment="排序")
     testlink_suite_id: Mapped[int | None] = mapped_column(BigInteger, comment="TestLink testsuite id")
 

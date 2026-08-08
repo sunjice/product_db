@@ -95,7 +95,6 @@ class TaskEngine:
             task_type=form.task_type,
             project_id=form.project_id,
             suite_id=form.suite_id,
-            sample_ids=form.sample_ids if form.sample_ids else None,
             spec_ids=spec_ids if spec_ids else None,
             ai_config_id=ai_config.id if ai_config else None,
             model=ai_config.model if ai_config else None,
@@ -207,7 +206,7 @@ class TaskEngine:
         if task is None:
             raise BusinessException(code=ResultCode.DATA_NOT_FOUND, msg="任务不存在")
 
-        now = datetime.now().strftime("%Y-%m-%d %H:%M:%S")
+        now = datetime.now()
         action_map = {
             ConfirmStatus.ACCEPTED: "accept",
             ConfirmStatus.IGNORED: "ignore",
@@ -219,9 +218,6 @@ class TaskEngine:
             if item is None or item.task_id != task_id:
                 continue
 
-            # 获取修改前的用例内容（用于审计记录）
-            before_snapshot = await svc.get_case_snapshot(item.case_id)
-
             item.confirm_status = ci.confirm_status
             item.reviewed_by = reviewed_by
             item.review_time = now
@@ -229,30 +225,33 @@ class TaskEngine:
             if ci.confirm_status == ConfirmStatus.EDITED_ACCEPTED and ci.final_content:
                 item.final_content = ci.final_content
 
+            # case_review：记录变更前快照
+            if task.task_type == TaskType.CASE_REVIEW and ci.confirm_status in (
+                ConfirmStatus.ACCEPTED, ConfirmStatus.EDITED_ACCEPTED
+            ):
+                before_snapshot = await svc.get_case_snapshot(item.case_id)
+
             # 根据任务类型写入目标
             if ci.confirm_status in (ConfirmStatus.ACCEPTED, ConfirmStatus.EDITED_ACCEPTED):
                 await self._apply_result(svc, task.task_type, item, ci)
 
-            # 获取修改后的用例内容（用于审计记录）
-            after_snapshot = (
-                await svc.get_case_snapshot(item.case_id)
-                if task.task_type in (TaskType.CASE_REVIEW, TaskType.CORE_SELECT)
-                else None
-            )
-
-            # 写入审核记录
-            await svc.create_review_record(
-                task_id=task_id,
-                task_item_id=ci.item_id,
-                case_id=item.case_id,
-                review_action=action_map.get(ci.confirm_status, "unknown"),
-                before_value=json.dumps(before_snapshot, ensure_ascii=False) if before_snapshot else None,
-                after_value=json.dumps(after_snapshot, ensure_ascii=False) if after_snapshot else None,
-                reviewer=reviewed_by,
-                reviewer_ip=reviewer_ip,
-                review_time=now,
-                memo="task_confirm" if task.task_type == TaskType.CORE_SELECT else None,
-            )
+            # case_review：写审核记录（变更前后快照对比）
+            if task.task_type == TaskType.CASE_REVIEW and ci.confirm_status in (
+                ConfirmStatus.ACCEPTED, ConfirmStatus.EDITED_ACCEPTED
+            ):
+                after_snapshot = await svc.get_case_snapshot(item.case_id)
+                await svc.create_review_record(
+                    task_id=task_id,
+                    task_item_id=ci.item_id,
+                    case_id=item.case_id,
+                    review_action=action_map.get(ci.confirm_status, "unknown"),
+                    before_value=json.dumps(before_snapshot, ensure_ascii=False) if before_snapshot else None,
+                    after_value=json.dumps(after_snapshot, ensure_ascii=False) if after_snapshot else None,
+                    reviewer=reviewed_by,
+                    reviewer_ip=reviewer_ip,
+                    review_time=now,
+                )
+            # core_select / script_gen 不需要审核记录
 
         # 更新任务状态为已确认
         await svc.mark_task_confirmed(task_id)
@@ -269,6 +268,7 @@ class TaskEngine:
             output=output,
             confirm_status=ci.confirm_status,
             final_content=ci.final_content if hasattr(ci, "final_content") else "",
+            is_core=getattr(ci, "is_core", None),
         )
 
     # ═══════════════ 审核记录 & 单条审核 ═══════════════
@@ -285,14 +285,20 @@ class TaskEngine:
         case_vo: CaseVO | None = None
         if case:
             case_vo = CaseVO(
-                id=case.id, project_id=case.project_id, suite_id=case.suite_id,
-                external_id=case.external_id, name=case.name, summary=case.summary,
-                preconditions=case.preconditions, topo=case.topo,
+                id=case.id, project_id=case.project_id,
+                project_prefix=case.project.prefix if case.project else "",
+                suite_id=case.suite_id,
+                suite_name=case.suite.name if case.suite else "",
+                external_id=case.external_id, name=case.name, purpose=case.purpose,
+                summary=case.summary, preconditions=case.preconditions, topo=case.topo,
                 test_data=case.test_data,
                 steps=[CaseStep(**s) for s in (case.steps or [])] if case.steps else [],
                 importance=case.importance, is_core=case.is_core,
                 core_reason=case.core_reason, core_source=case.core_source,
-                review_status=case.review_status, script_count=case.script_count,
+                is_sample=case.is_sample, review_status=case.review_status,
+                script_count=case.script_count,
+                create_time=str(case.create_time) if case.create_time else None,
+                update_time=str(case.update_time) if case.update_time else None,
             )
 
         item_vo = self._task_item_to_vo(item)
@@ -309,7 +315,7 @@ class TaskEngine:
         if item is None or item.task_id != task_id:
             raise BusinessException(code=ResultCode.DATA_NOT_FOUND, msg="明细不存在")
 
-        now = datetime.now().strftime("%Y-%m-%d %H:%M:%S")
+        now = datetime.now()
         output: dict = item.output or {}
         case = await self.db.get(AiTcCase, item.case_id)
 
@@ -330,7 +336,7 @@ class TaskEngine:
                     reviewer=reviewed_by, reviewer_ip=reviewer_ip, review_time=now,
                 )
 
-            elif f.action == "edit_accept" and f.edited_value:
+            elif f.action == "edit_accept" and f.edited_value is not None:
                 before_val = self._get_case_field_value(case, f.field_name) if case else ""
                 await svc.update_case_field(item.case_id, f.field_name, f.edited_value)
 
@@ -394,13 +400,20 @@ class TaskEngine:
 
     @staticmethod
     def _get_case_field_value(case: AiTcCase | None, field_name: str):
-        """获取用例字段的原始值。"""
+        """获取用例字段的原始值（覆盖全部可审核字段）。"""
         if case is None:
             return ""
         field_map = {
-            "name": case.name, "summary": case.summary,
-            "preconditions": case.preconditions, "test_data": case.test_data,
-            "steps": case.steps, "is_core": case.is_core,
+            "name": case.name,
+            "purpose": case.purpose,
+            "summary": case.summary,
+            "importance": case.importance,
+            "preconditions": case.preconditions,
+            "test_data": case.test_data,
+            "topo": case.topo,
+            "steps": case.steps,
+            "is_core": case.is_core,
+            "core_reason": case.core_reason,
         }
         return field_map.get(field_name, "")
 
@@ -459,8 +472,7 @@ class TaskEngine:
             id=t.id, task_type=t.task_type,
             project_id=t.project_id, project_name=project_name,
             suite_id=t.suite_id, suite_name=suite_name,
-            prompt_id=None, sample_ids=t.sample_ids or [],
-            spec_ids=t.spec_ids,
+            prompt_id=None, spec_ids=t.spec_ids,
             ai_config_id=t.ai_config_id, model=t.model,
             status=t.status, total_count=t.total_count, done_count=t.done_count,
             session_id=t.session_id,
@@ -471,14 +483,32 @@ class TaskEngine:
 
     @staticmethod
     def _task_item_to_vo(it: AiTcTaskItem) -> TaskItemVO:
+        external_id = None
+        project_prefix = ""
+        purpose = ""
+        importance = 2
+        is_core = None
+        try:
+            if it.case:
+                external_id = it.case.external_id
+                purpose = it.case.purpose or ""
+                importance = it.case.importance or 2
+                is_core = it.case.is_core if it.case.is_core is not None else None
+                if it.case.project:
+                    project_prefix = it.case.project.prefix or ""
+        except Exception:
+            pass
         return TaskItemVO(
             id=it.id, task_id=it.task_id,
             case_id=it.case_id, case_name=it.case_name,
+            project_prefix=project_prefix, external_id=external_id,
+            purpose=purpose, importance=importance,
             output=it.output, item_status=it.item_status,
             confirm_status=it.confirm_status,
             final_content=it.final_content,
             reviewed_by=it.reviewed_by,
             review_time=it.review_time,
+            is_core=is_core,
         )
 
 

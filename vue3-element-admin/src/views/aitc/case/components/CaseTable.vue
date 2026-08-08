@@ -64,16 +64,18 @@
         </template>
       </el-table-column>
       <el-table-column prop="script_count" label="脚本" width="60" align="center" />
-      <el-table-column label="操作" width="280" fixed="right">
+      <el-table-column label="操作" width="180" fixed="right" class-name="col-ops">
         <template #default="{ row }">
-          <el-button text type="primary" size="small" @click="$emit('showDetail', row)">详情</el-button>
-          <el-button text type="primary" size="small" v-hasPerm="'aitc:case:update'" @click="$emit('openEdit', row)">编辑</el-button>
-          <el-button text type="primary" size="small" v-hasPerm="'aitc:case:core'" @click="$emit('toggleCore', row)">
-            {{ row.is_core ? '取消核心' : '标记核心' }}
-          </el-button>
-          <el-button text type="primary" size="small" v-hasPerm="'aitc:case:sample'" @click="$emit('toggleSample', row)">
-            {{ row.is_sample ? '取消样本' : '标记样本' }}
-          </el-button>
+          <div class="ops-cell">
+            <el-button text type="primary" size="small" @click="$emit('showDetail', row)">详情</el-button>
+            <el-button text type="primary" size="small" v-hasPerm="'aitc:case:update'" @click="$emit('openEdit', row)">编辑</el-button>
+            <el-button text type="primary" size="small" v-hasPerm="'aitc:case:core'" @click="$emit('toggleCore', row)">
+              {{ row.is_core ? '取消核心' : '标记核心' }}
+            </el-button>
+            <el-button text type="primary" size="small" v-hasPerm="'aitc:case:sample'" @click="$emit('toggleSample', row)">
+              {{ row.is_sample ? '取消样本' : '标记样本' }}
+            </el-button>
+          </div>
         </template>
       </el-table-column>
     </el-table>
@@ -123,3 +125,16 @@ const localQuery = computed({
   set: () => {}, // 父组件通过 v-model:query-params 绑定
 });
 </script>
+
+<style scoped>
+.ops-cell {
+  display: flex;
+  gap: 0;
+  align-items: center;
+}
+.ops-cell .el-button {
+  padding: 0 6px;
+  height: 22px;
+  font-size: 11px;
+}
+</style>

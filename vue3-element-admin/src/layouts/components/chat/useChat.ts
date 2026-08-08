@@ -29,6 +29,7 @@ export function useChat() {
   const loadingSessions = ref(false)
   const loadingMessages = ref(false)
   const pageContext = ref<Record<string, any>>({})  // 页面上下文（projectId/suiteId 等）
+  let abortController: AbortController | null = null  // 用于中断流式请求
 
   // ── 计算属性 ──
   const activeSession = computed(() =>
@@ -104,6 +105,41 @@ export function useChat() {
     messages.value.push(msg)
   }
 
+  /** 停止当前生成 */
+  function stopGeneration() {
+    if (abortController) {
+      abortController.abort()
+      abortController = null
+    }
+    streaming.value = false
+    streamingText.value = ""
+    thinkingStep.value = ""
+    toolSteps.value = []
+  }
+
+  /** 重试最后一条消息（发送最后一条用户消息） */
+  async function retryLastMessage() {
+    // 找到最后一条用户消息
+    let lastUserContent = ""
+    for (let i = messages.value.length - 1; i >= 0; i--) {
+      if (messages.value[i].role === "user") {
+        lastUserContent = messages.value[i].content || ""
+        break
+      }
+    }
+    if (!lastUserContent) return
+
+    // 移除最后的 assistant 和 error 消息
+    while (
+      messages.value.length > 0 &&
+      messages.value[messages.value.length - 1].role !== "user"
+    ) {
+      messages.value.pop()
+    }
+
+    await sendMessage(lastUserContent)
+  }
+
   async function sendMessage(content: string): Promise<void> {
     if (!activeSessionId.value) {
       // 自动创建会话，带上页面上下文
@@ -137,9 +173,12 @@ export function useChat() {
     thinkingStep.value = ""
     toolSteps.value = []
 
+    // 创建新的 AbortController
+    abortController = new AbortController()
+
     try {
       const req: MessageSendReq = { content }
-      const response = await ChatMessageAPI.send(sessionId, req)
+      const response = await ChatMessageAPI.send(sessionId, req, abortController.signal)
 
       if (!response.ok) {
         throw new Error(`HTTP ${response.status}`)
@@ -176,8 +215,8 @@ export function useChat() {
 
               switch (eventType) {
                 case "thinking":
-                  // Agent 初始心跳，表示已开始工作
-                  thinkingStep.value = data.message || "思考中..."
+                  // Agent 初始心跳，仅表示模型正在思考，不写入 thinkingStep
+                  // 由 StreamingBubble 默认显示「思考中...」
                   break
 
                 case "chunk":
@@ -189,19 +228,16 @@ export function useChat() {
                   break
 
                 case "tool_start":
-                  // Agent 模式：工具开始执行，显示 thinking 状态
+                  // Agent 模式：工具开始执行，更新 thinking 状态
+                  // 不再拼接到 streamingText，保持正文干净
                   thinkingStep.value = data.name || "处理中"
-                  streamingText.value += `\n[正在调用工具：${thinkingStep.value}]`
                   break
 
                 case "tool_end":
                   // Agent 模式：工具执行完成
-                  toolSteps.value.push(data.name || "")
+                  if (data.name) toolSteps.value.push(data.name)
                   thinkingStep.value = ""
-                  if (data.summary) {
-                    // 工具执行结果摘要，追加到流式文本中让用户感知
-                    streamingText.value += `\n[已完成 ${data.name || "工具"}] ${data.summary}`
-                  }
+                  // 不再把工具摘要拼入 streamingText
                   break
 
                 case "message":
@@ -211,29 +247,38 @@ export function useChat() {
                   if (data.draft_data) draftData = data.draft_data
                   if (data.skill_name) skillName = data.skill_name
                   if (data.metadata) messageMetadata = data.metadata
-                  // 把本次 Agent 调用的工具列表合并进 metadata，便于历史消息展示
-                  if (toolSteps.value.length) {
-                    messageMetadata = {
-                      ...messageMetadata,
-                      tool_names: [...toolSteps.value],
-                      tool_calls: toolSteps.value.length,
-                    }
-                  }
                   break
 
                 case "error":
-                  ElMessage.error(data.message || "处理出错")
-                  break
+                  // 不再只弹 toast，后续会作为错误消息插入列表
+                  throw new Error(data.message || "服务端处理出错")
               }
-            } catch {
+            } catch (parseErr: any) {
+              // 如果是主动抛出的错误，继续向上传播
+              if (parseErr.message && !parseErr.message.includes("JSON")) {
+                throw parseErr
+              }
               // JSON 解析失败，跳过
             }
           }
         }
       }
 
-      // SSE 流已结束，先关闭 streaming 占位符，再 push 真消息，避免占位符与真消息短暂共存
+      // SSE 流已结束，先关闭 streaming 占位符，再 push 真消息
       streaming.value = false
+
+      // 把本次 Agent 调用的工具列表合并进 metadata，不依赖 message 事件
+      if (toolSteps.value.length) {
+        messageMetadata = {
+          ...messageMetadata,
+          tool_names: [...toolSteps.value],
+          tool_calls: toolSteps.value.length,
+        }
+        // 如果还没有 skill_name 但有技能，补充进来
+        if (!messageMetadata.skill_name && skillName) {
+          messageMetadata.skill_name = skillName
+        }
+      }
 
       // 添加助手消息
       if (assistantContent || streamingText.value) {
@@ -274,10 +319,49 @@ export function useChat() {
       // 刷新会话列表（更新消息计数和时间）
       await loadSessions()
     } catch (e: any) {
-      ElMessage.error(`发送失败: ${e.message}`)
+      // 如果是用户主动中断，不显示错误
+      if (e.name === "AbortError") {
+        // 保留已输出的部分内容作为消息
+        if (streamingText.value) {
+          const md: Record<string, any> = {}
+          if (toolSteps.value.length) {
+            md.tool_names = [...toolSteps.value]
+            md.tool_calls = toolSteps.value.length
+          }
+          const partialMsg: ChatMessage = {
+            id: null,
+            session_id: sessionId,
+            role: "assistant",
+            msg_type: "text",
+            content: streamingText.value + "\n\n*[已停止生成]*",
+            metadata_json: Object.keys(md).length > 0 ? md : null,
+            draft_id: null,
+            create_time: new Date().toISOString(),
+          }
+          addLocalMessage(partialMsg)
+        }
+      } else {
+        // 推送错误消息到列表
+        const errMsg: ChatMessage = {
+          id: null,
+          session_id: sessionId,
+          role: "system",
+          msg_type: "error",
+          content: e.message || "请求失败，请重试",
+          metadata_json: {
+            error: true,
+            last_user_message: content,
+          } as any,
+          draft_id: null,
+          create_time: new Date().toISOString(),
+        }
+        addLocalMessage(errMsg)
+      }
     } finally {
       streaming.value = false
       streamingText.value = ""
+      thinkingStep.value = ""
+      abortController = null
     }
   }
 
@@ -447,6 +531,7 @@ export function useChat() {
     const projectId = metadata.project_id
     const suiteId = metadata.suite_id
     const caseIds: number[] | undefined = metadata.case_ids ?? undefined
+    const selectedOption = metadata._selected_option as string | undefined
 
     try {
       const res = await ChatTaskAPI.confirmCreate(sessionId, {
@@ -454,6 +539,7 @@ export function useChat() {
         project_id: projectId,
         suite_id: suiteId,
         case_ids: caseIds ?? null,
+        selected_option: selectedOption ?? null,
       })
 
       const taskId = res.task_id
@@ -485,7 +571,7 @@ export function useChat() {
       messages.value.push(taskMsg)
 
       // 回写本地 confirm_card 消息的 metadata_json，标记已确认
-      updateLastUnconfirmedCardInMessages("confirmed")
+      updateLastUnconfirmedCardInMessages("confirmed", selectedOption)
 
       await loadSessions()
 
@@ -513,16 +599,41 @@ export function useChat() {
   }
 
   /** 找到 messages 中最后一条未处理的 confirm_card，更新其 metadata_json */
-  function updateLastUnconfirmedCardInMessages(status: string) {
+  function updateLastUnconfirmedCardInMessages(status: string, selectedOption?: string) {
     for (let i = messages.value.length - 1; i >= 0; i--) {
       const m = messages.value[i]
       if (m.msg_type === "confirm_card" && !m.metadata_json?.confirm_status) {
+        const meta: Record<string, any> = { ...(m.metadata_json || {}), confirm_status: status }
+        if (selectedOption) meta._selected_option = selectedOption
+        messages.value[i] = { ...m, metadata_json: meta }
+        break
+      }
+    }
+  }
+
+  /** 将最后一条 clarify_card 标记为已提交，并将答案持久化 */
+  async function submitClarifyAnswers(answers: Record<string, string>) {
+    // 本地更新
+    for (let i = messages.value.length - 1; i >= 0; i--) {
+      const m = messages.value[i]
+      if (m.msg_type === "clarify_card" && !m.metadata_json?.clarify_status) {
         messages.value[i] = {
           ...m,
-          metadata_json: { ...(m.metadata_json || {}), confirm_status: status },
+          metadata_json: {
+            ...(m.metadata_json || {}),
+            clarify_status: "submitted",
+            clarify_answers: answers,
+          },
         }
         break
       }
+    }
+    // 持久化到后端
+    if (activeSessionId.value) {
+      ChatMessageAPI.updateCardStatus(activeSessionId.value, {
+        msg_type: "clarify_card",
+        metadata: { clarify_status: "submitted", clarify_answers: answers },
+      }).catch(() => {})
     }
   }
 
@@ -568,11 +679,14 @@ export function useChat() {
     deleteSession,
     loadMessages,
     sendMessage,
+    stopGeneration,
+    retryLastMessage,
     confirmDraft,
     viewDraft,
     closeDraftPanel,
     confirmCreateTask,
     cancelTask,
+    submitClarifyAnswers,
     loadSkills,
     monitorIncompleteTasks,
     init,

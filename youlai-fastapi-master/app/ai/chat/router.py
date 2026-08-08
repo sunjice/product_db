@@ -1,5 +1,6 @@
 """AI 对话系统 — Router 路由（/api/v1/aitc/chat/*）。"""
 
+import asyncio
 import json
 from typing import AsyncGenerator
 
@@ -18,7 +19,7 @@ from app.ai.chat.schemas import (
     MessageSendReq, MessageVO,
     DraftVO, DraftConfirmReq,
     ContextSetReq, SkillInfoVO,
-    ConfirmCreateTaskReq,
+    ConfirmCreateTaskReq, UpdateCardStatusReq,
 )
 from app.ai.agent.skills.base import skill_registry
 from app.ai.chat.session_manager import SessionContext
@@ -122,10 +123,24 @@ async def send_message(
             draft_type = None
             draft_data = None
 
-            async for sse in chat_orchestrator.process_message(
+            stream = chat_orchestrator.process_message(
                 req.content, context, history
-            ):
-                yield sse
+            )
+            # 用 heartbeat 包裹：工具执行期间可能 30-60s 无输出，每 25s 发 : heartbeat 防止代理断连
+            while True:
+                try:
+                    next_event = asyncio.ensure_future(stream.__anext__())
+                    done, _ = await asyncio.wait([next_event], timeout=25)
+                    if done:
+                        sse = next_event.result()
+                        yield sse
+                    else:
+                        next_event.cancel()
+                        yield ": heartbeat\n\n"
+                        continue
+                except StopAsyncIteration:
+                    break
+
                 # 收集 assistant 消息内容 — SSE 是多行字符串(event:xxx\ndata:{...})，需按行解析
                 for line in sse.splitlines():
                     if line.startswith("data: "):
@@ -228,6 +243,18 @@ async def cancel_confirm(session_id: int, db: AsyncSession = Depends(get_db)):
     return Result(data=None, msg="已取消")
 
 
+@router.post("/sessions/{session_id}/update-card-status")
+async def update_card_status(
+    session_id: int,
+    req: UpdateCardStatusReq,
+    db: AsyncSession = Depends(get_db),
+):
+    """通用卡片状态更新：更新会话中最后一条指定类型卡片的 metadata。"""
+    service = ChatService(db)
+    await service.update_last_card_metadata_by_type(session_id, req.msg_type, req.metadata)
+    return Result(data=None, msg="卡片状态已更新")
+
+
 # ═══════════════ 上下文 ═══════════════
 
 @router.post("/context")
@@ -308,7 +335,10 @@ async def confirm_create_task(
     )
 
     # 回写 confirm_card 消息的 metadata_json，标记已确认
-    await service.update_last_confirm_card_metadata(session_id, {"confirm_status": "confirmed"})
+    confirm_meta: dict = {"confirm_status": "confirmed"}
+    if req.selected_option:
+        confirm_meta["_selected_option"] = req.selected_option
+    await service.update_last_confirm_card_metadata(session_id, confirm_meta)
 
     return Result(data={
         "task_id": task_vo.id,

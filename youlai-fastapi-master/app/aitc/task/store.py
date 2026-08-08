@@ -72,7 +72,7 @@ class TaskStore:
                 id=t.id, task_type=t.task_type,
                 project_id=t.project_id, project_name=pname_map.get(t.project_id, ""),
                 suite_id=t.suite_id, suite_name=sname_map.get(t.suite_id, ""),
-                prompt_id=None, sample_ids=t.sample_ids or [],
+                prompt_id=None,
                 spec_ids=t.spec_ids,
                 ai_config_id=t.ai_config_id, model=t.model,
                 status=t.status, total_count=t.total_count, done_count=t.done_count,
@@ -135,11 +135,22 @@ class TaskStore:
             "core_reason": case.core_reason or "",
         }
 
+    async def update_case_field(self, case_id: int, field_name: str, value) -> None:
+        """更新用例的单个字段（仅修改内存对象，不单独 flush）。"""
+        case = await self.db.get(AiTcCase, case_id)
+        if case is None:
+            return
+        # SmallInteger 字段需要转为 int
+        if field_name in ("importance", "is_core"):
+            value = int(value)
+        setattr(case, field_name, value)
+        case.update_time = datetime.now()
+
     # ═══════════════ Task 写操作 ═══════════════
 
     async def create_task_record(
         self, task_type: str, project_id: int, suite_id: int,
-        sample_ids: list[int] | None, spec_ids: list[int] | None,
+        spec_ids: list[int] | None,
         ai_config_id: int | None, model: str | None,
         total_count: int, create_by: str,
         session_id: int | None = None,
@@ -148,7 +159,6 @@ class TaskStore:
             task_type=task_type,
             project_id=project_id,
             suite_id=suite_id,
-            sample_ids=sample_ids or None,
             spec_ids=spec_ids or None,
             ai_config_id=ai_config_id,
             model=model,
@@ -231,14 +241,22 @@ class TaskStore:
             ).order_by(AiTcReviewRecord.id.desc())
         )
         records = rows.scalars().all()
+        case_ids = [r.case_id for r in records if r.case_id]
+        case_name_map = {}
+        if case_ids:
+            case_rows = await self.db.execute(
+                select(AiTcCase.id, AiTcCase.name).where(AiTcCase.id.in_(case_ids))
+            )
+            case_name_map = {r[0]: r[1] for r in case_rows}
         return [
             ReviewRecordVO(
-                id=r.id, task_id=r.task_id, task_item_id=r.task_item_id, case_id=r.case_id,
+                id=r.id, task_id=r.task_id, task_item_id=r.task_item_id,
+                case_id=r.case_id, case_name=case_name_map.get(r.case_id),
                 review_action=r.review_action, field_name=r.field_name,
                 before_value=r.before_value, after_value=r.after_value,
                 reviewer=r.reviewer, reviewer_ip=r.reviewer_ip,
                 review_time=r.review_time, memo=r.memo,
-                create_time=str(r.create_time) if r.create_time else None,
+                create_time=r.create_time,
             )
             for r in records
         ]

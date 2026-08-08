@@ -57,7 +57,7 @@
 <script setup lang="ts">
 import type { TaskVO } from "@/api/aitc/task";
 import { TaskStatusEnum } from "@/enums/aitc";
-import { taskTypeLabel, taskTypeTag, statusLabel, statusTag } from "../../constants";
+import { taskTypeLabel, taskTypeTag, statusLabel, statusTag } from "../../../constants";
 
 defineProps<{
   taskId: string;

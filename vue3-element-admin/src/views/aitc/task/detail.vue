@@ -9,7 +9,7 @@
       </template>
     </TaskProgress>
 
-    <ReviewRecordList :records="reviewRecords" />
+    <ReviewRecordList v-if="task?.task_type === 'case_review'" :records="reviewRecords" />
 
     <!-- 明细列表 -->
     <el-card>
@@ -17,13 +17,17 @@
         <div class="flex justify-between items-center">
           <span class="font-bold">任务明细（{{ items.length }} 条）</span>
           <div class="flex gap-2">
-            <el-input v-model="itemKeyword" placeholder="搜索用例名" clearable size="small" style="width: 200px" />
+            <el-input v-model="itemKeyword" placeholder="搜索用例编号" clearable size="small" style="width: 200px" />
           </div>
         </div>
       </template>
       <el-table :data="filteredItems" v-loading="loading" border stripe size="small">
         <el-table-column type="index" label="#" width="50" />
-        <el-table-column prop="case_name" label="用例名称" min-width="200" show-overflow-tooltip />
+        <el-table-column label="用例编号" min-width="200" show-overflow-tooltip>
+          <template #default="{ row }">
+            {{ formatCaseNumber(row) }}
+          </template>
+        </el-table-column>
         <el-table-column label="明细状态" width="90" align="center">
           <template #default="{ row }">
             <el-tag :type="itemStatusTag(row.item_status)" size="small">
@@ -33,7 +37,29 @@
         </el-table-column>
         <el-table-column label="确认状态" width="90" align="center">
           <template #default="{ row }">
-            <el-tag :type="confirmTag(row.confirm_status)" size="small">
+            <template v-if="task?.task_type === 'core_select'">
+              <el-tag
+                v-if="row.confirm_status === ConfirmStatusEnum.PENDING"
+                type="info"
+                size="small"
+              >
+                待确认
+              </el-tag>
+              <el-tag
+                v-else-if="row.confirm_status === ConfirmStatusEnum.IGNORED"
+                size="small"
+              >
+                忽略
+              </el-tag>
+              <el-tag
+                v-else
+                :type="coreSelectAdopted(row) ? 'success' : 'warning'"
+                size="small"
+              >
+                {{ coreSelectAdopted(row) ? '已采纳' : '未采纳' }}
+              </el-tag>
+            </template>
+            <el-tag v-else :type="confirmTag(row.confirm_status)" size="small">
               {{ confirmLabel(row.confirm_status) }}
             </el-tag>
           </template>
@@ -41,27 +67,18 @@
         <el-table-column label="AI输出" min-width="220">
           <template #default="{ row }">
             <template v-if="row.output">
-              <div v-if="row.output.selected !== undefined" class="text-sm">
-                <span :class="row.output.selected ? 'text-green-600' : 'text-gray-400'">
-                  {{ row.output.selected ? '★ 核心' : '非核心' }}
-                </span>
-                <span class="ml-2 text-gray-500">— {{ row.output.reason || '' }}</span>
-              </div>
-              <div v-else-if="row.output.score !== undefined" class="text-sm">
-                评分: <b>{{ row.output.score }}</b>
-                <div v-if="row.output.fields?.length" class="mt-1">
-                  <span class="text-green-600 text-xs">{{ passedFieldCount(row.output.fields) }} 合格</span>
-                  <span v-if="failedFieldCount(row.output.fields) > 0" class="text-red-500 text-xs ml-1">
-                    {{ failedFieldCount(row.output.fields) }} 不合格
-                  </span>
-                </div>
-                <div v-if="row.output.issues" class="text-red-500 text-xs">
-                  {{ Array.isArray(row.output.issues) ? row.output.issues.join('; ') : row.output.issues }}
-                </div>
-              </div>
-              <div v-else-if="row.output.script" class="text-sm text-gray-500">
-                {{ row.output.language || 'python' }} / {{ row.output.framework || 'pytest' }}
-              </div>
+              <OutputCoreSelect
+                v-if="task?.task_type === 'core_select'"
+                :output="row.output"
+              />
+              <OutputCaseReview
+                v-else-if="task?.task_type === 'case_review'"
+                :output="row.output"
+              />
+              <OutputScriptGen
+                v-else-if="task?.task_type === 'script_gen'"
+                :output="row.output"
+              />
               <div v-else class="text-xs text-gray-400">{{ JSON.stringify(row.output).slice(0, 80) }}</div>
             </template>
             <span v-else class="text-gray-300">—</span>
@@ -119,7 +136,13 @@ import {
   confirmLabel, confirmTag,
   itemStatusLabel, itemStatusTag,
 } from "../constants";
-import { useTaskPolling } from "./composables/useTaskPolling";
+import TaskProgress from "./shared/components/TaskProgress.vue";
+import ReviewRecordList from "./shared/components/ReviewRecordList.vue";
+import { useTaskPolling } from "./shared/composables/useTaskPolling";
+import { resolveReviewPath } from "./shared/utils/taskRouter";
+import OutputCoreSelect from "./core_select/OutputColumn.vue";
+import OutputCaseReview from "./case_review/OutputColumn.vue";
+import OutputScriptGen from "./script_gen/OutputColumn.vue";
 
 const route = useRoute();
 const router = useRouter();
@@ -132,6 +155,23 @@ const loading = ref(false);
 const itemKeyword = ref("");
 // 自动刷新
 const { autoRefresh } = useTaskPolling(loadData);
+
+// 格式化用例编号：project_prefix + external_id + __ + case_name
+function formatCaseNumber(row: TaskItemVO): string {
+  const prefix = (row.project_prefix || "") + (row.external_id || "");
+  const name = row.case_name || "";
+  if (prefix && name) return prefix + "__" + name;
+  return name || prefix || "—";
+}
+
+// 核心挑选：AI建议与最终结果是否一致
+function coreSelectAdopted(row: TaskItemVO): boolean {
+  const aiSelected = row.output?.selected ?? false;
+  const finalIsCore = row.is_core !== null && row.is_core !== undefined
+    ? row.is_core
+    : aiSelected;
+  return aiSelected === finalIsCore;
+}
 
 // 原始输出弹窗
 const rawOutputVisible = ref(false);
@@ -151,23 +191,18 @@ const rawOutputFormatted = computed(() => {
 const filteredItems = computed(() => {
   if (!itemKeyword.value) return items.value;
   const kw = itemKeyword.value.toLowerCase();
-  return items.value.filter(it => it.case_name.toLowerCase().includes(kw));
+  return items.value.filter(it => {
+    const prefix = (it.project_prefix || "").toLowerCase();
+    const extId = (it.external_id || "").toLowerCase();
+    const name = (it.case_name || "").toLowerCase();
+    return (prefix + extId + name).includes(kw);
+  });
 });
-
-// fields 统计（新格式）
-function passedFieldCount(fields: any[]) {
-  if (!Array.isArray(fields)) return 0;
-  return fields.filter((f: any) => f.conclusion === "pass").length;
-}
-function failedFieldCount(fields: any[]) {
-  if (!Array.isArray(fields)) return 0;
-  return fields.filter((f: any) => f.conclusion === "fail").length;
-}
 
 // 原材料输出弹窗
 function showRawOutput(row: TaskItemVO) {
   rawOutputContent.value = row.output || null;
-  rawOutputCaseName.value = row.case_name;
+  rawOutputCaseName.value = formatCaseNumber(row);
   rawOutputItemStatus.value = row.item_status;
   rawOutputVisible.value = true;
 }
@@ -207,25 +242,16 @@ function goBack() {
 
 function goReview() {
   // 根据任务类型跳转，默认从第一条开始审核
-  if (items.value.length > 0) {
-    const firstItem = items.value[0];
-    if (task.value?.task_type === "case_review") {
-      router.push(`/aitc/tasks/${taskId}/case-review/${firstItem.id}`);
-    } else if (task.value?.task_type === "script_gen") {
-      router.push(`/aitc/tasks/${taskId}/script-review/${firstItem.id}`);
-    }
+  const taskType = task.value?.task_type;
+  if (items.value.length > 0 && taskType) {
+    router.push(resolveReviewPath(taskType, taskId, String(items.value[0].id)));
   }
 }
 
 function goReviewItem(row: TaskItemVO) {
   const taskType = task.value?.task_type;
-  if (taskType === "case_review") {
-    router.push(`/aitc/tasks/${taskId}/case-review/${row.id}`);
-  } else if (taskType === "script_gen") {
-    router.push(`/aitc/tasks/${taskId}/script-review/${row.id}`);
-  } else {
-    router.push(`/aitc/tasks/${taskId}/review?itemId=${row.id}`);
-  }
+  if (!taskType) return;
+  router.push(resolveReviewPath(taskType, taskId, String(row.id)));
 }
 
 async function rerunTask() {

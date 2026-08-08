@@ -7,10 +7,10 @@
           <el-option v-for="p in projectOptions" :key="p.value" :label="p.label" :value="String(p.value)" />
         </el-select>
         <el-divider direction="vertical" />
-        <el-button type="default" size="small" v-hasPerm="'aitc:case:import'" @click="downloadTemplate">下载模板</el-button>
+        <!-- <el-button type="default" size="small" v-hasPerm="'aitc:case:import'" @click="downloadTemplate">下载模板</el-button>
         <el-upload :show-file-list="false" :before-upload="handleImport" accept=".xlsx,.xls" v-hasPerm="'aitc:case:import'">
           <el-button type="primary" size="small" :disabled="!selectedProjectId">导入Excel</el-button>
-        </el-upload>
+        </el-upload> -->
       </div>
     </el-card>
 

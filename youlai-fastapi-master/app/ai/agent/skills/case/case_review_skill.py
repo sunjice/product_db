@@ -28,6 +28,7 @@ class CaseReviewSkill(BaseSkill):
     async def execute(self, params: dict, context: dict) -> SkillResult:
         project_id = params.get("project_id") or context.get("project_id")
         suite_id = params.get("suite_id") or context.get("suite_id")
+        scope = params.get("scope")  # "all" | "selected" | None
         context_json = context.get("context_json", {})
         raw_selected_case_ids = context_json.get("selected_case_ids", []) if context_json else []
         raw_current_case_id = context_json.get("current_case_id") if context_json else None
@@ -50,12 +51,17 @@ class CaseReviewSkill(BaseSkill):
                 error="用例数为 0",
             )
 
-        # 防御校验 + 优先级裁决：current_case_id > selected_case_ids > 全模块
-        target_case_ids = await resolve_scope(
-            db, int(suite_id), raw_selected_case_ids, raw_current_case_id,
-        )
+        # scope="all" → 审核整个模块全部用例；否则按原有优先级裁决
+        if scope == "all":
+            target_case_ids = None  # None 表示全部
+        else:
+            target_case_ids = await resolve_scope(
+                db, int(suite_id), raw_selected_case_ids, raw_current_case_id,
+            )
         scope_total = len(target_case_ids) if target_case_ids else total
-        scope_desc = f"已选中的 {scope_total} 条" if target_case_ids else "当前模块下的"
+        scope_desc = "当前模块下全部" if target_case_ids is None and scope == "all" else (
+            f"已选中的 {scope_total} 条" if target_case_ids else "当前模块下的"
+        )
 
         # 获取项目名和模块名，构建确认卡片
         project_name = await _get_project_name(db, int(project_id))

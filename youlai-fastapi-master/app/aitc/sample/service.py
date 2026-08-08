@@ -93,18 +93,6 @@ class SampleService:
         )
         return len(id_list)
 
-    async def load_samples_text(self, sample_ids: list[int]) -> str:
-        """根据 ID 加载样本内容并拼接为文本。"""
-        rows = await self.db.execute(
-            select(AiTcSample).where(
-                AiTcSample.id.in_(sample_ids),
-                AiTcSample.is_deleted == 0,
-            )
-        )
-        parts = []
-        for s in rows.scalars().all():
-            parts.append(f"【样本：{s.name}】\n{s.content}")
-        return "\n\n".join(parts)
 
     # ═══════════════ VO 组装 ═══════════════
 

@@ -1,6 +1,8 @@
 """任务域 — ORM 模型（Task / TaskItem / ReviewRecord）。"""
 
-from sqlalchemy import BigInteger, ForeignKey, Index, Integer, SmallInteger, String, Text
+from datetime import datetime
+
+from sqlalchemy import BigInteger, DateTime, ForeignKey, Index, Integer, SmallInteger, String, Text
 from sqlalchemy.dialects.postgresql import JSONB
 from sqlalchemy.orm import Mapped, mapped_column, relationship
 
@@ -77,7 +79,7 @@ class AiTcTaskItem(Base, BaseIdMixin, TimestampMixin, SoftDeleteMixin):
     )
     final_content: Mapped[str | None] = mapped_column(Text, comment="人工修改后的最终内容")
     reviewed_by: Mapped[str | None] = mapped_column(String(64), comment="审核人")
-    review_time: Mapped[str | None] = mapped_column(String(32), comment="审核时间")
+    review_time: Mapped[datetime | None] = mapped_column(DateTime, comment="审核时间")
 
     task: Mapped["AiTcTask"] = relationship(back_populates="items", lazy="selectin")
     case: Mapped["AiTcCase"] = relationship(lazy="selectin")
@@ -106,7 +108,7 @@ class AiTcReviewRecord(Base, BaseIdMixin, TimestampMixin):
     after_value: Mapped[str | None] = mapped_column(Text, comment="修改后的值")
     reviewer: Mapped[str | None] = mapped_column(String(64), comment="审核人")
     reviewer_ip: Mapped[str | None] = mapped_column(String(64), comment="审核人IP")
-    review_time: Mapped[str | None] = mapped_column(String(32), comment="审核时间")
+    review_time: Mapped[datetime | None] = mapped_column(DateTime, comment="审核时间")
     memo: Mapped[str | None] = mapped_column(String(512), comment="备注")
 
     __table_args__ = (

@@ -1,6 +1,6 @@
 # TODO
 
-> 最后更新：2026-08-04
+> 最后更新：2026-08-07
 > 范围：`vue3-element-admin` + `youlai-fastapi-master`
 
 ---
@@ -39,10 +39,19 @@
 - [ ] 9. Excel 导入功能下线（`import_cases` 去掉 Excel 格式解析，`CaseImportDialog.vue` + 入口按钮移除）
 - [ ] 10. `开发指导手册.md` 补 testlink 域、字段映射表、同步状态机、降级链章节
 
+### 消息存储优化
+
+- [ ] 11. `get_message_history` 返回完整字段（`role` + `content` + `tool_calls` + `tool_call_id` + `name` + `msg_type`）
+  - 当前只返回 `{role, content}`，导致 Agent 多轮对话时上一轮的工具调用上下文丢失
+  - `runner.py` 中的 `tool_calls` 重建逻辑（`_build_history` L218-222）因缺少数据字段从未被触发
+- [ ] 12. assistant 消息防丢失：在 SSE 流开始前创建占位记录（`status=pending`），流中更新 content，异常时标记 `status=error`
+  - 当前 user 消息先入库、assistant 在 SSE 流结束后才入库，流中断时会造成 user 有记录但 assistant 丢失的不一致状态
+- [ ] 13. 历史查询加 SQL 层 LIMIT/OFFSET，去掉 `get_messages(session_id)` 全量查 + 内存切片
+
 ### LangGraph 二期
 
-- [ ] 11. 新建 `agent/graphs/`：base + core_select/case_review/script_gen 三张作业图，handler 改为薄适配层
-- [ ] 12. 新建 `chat/graph.py`：LangGraph 重写 orchestrator 内部实现，保留关键词 fast path
+- [ ] 14. 新建 `agent/graphs/`：base + core_select/case_review/script_gen 三张作业图，handler 改为薄适配层
+- [ ] 15. 新建 `chat/graph.py`：LangGraph 重写 orchestrator 内部实现，保留关键词 fast path
 
 **说明**：两层图各司其职 — 作业图编排单次任务内多节点 LLM 流程；会话图替换 orchestrator 的意图路由 + 自由对话，SSE 事件协议不变。
 
@@ -50,8 +59,8 @@
 
 ## 三、共享
 
-- [ ] 13. 权限控制补齐（前端 `v-hasPerm` + 后端端点 `Depends(require_perm(...))`）
-- [ ] 14. 测试覆盖补充（aitc/ai 域）
+- [ ] 16. 权限控制补齐（前端 `v-hasPerm` + 后端端点 `Depends(require_perm(...))`）
+- [ ] 17. 测试覆盖补充（aitc/ai 域）
 
 ---
 
@@ -59,4 +68,4 @@
 
 | 日期 | 内容 |
 |------|------|
-| 2026-08-04 | 合并两份 TODO 为一份，删除已完成项和背景/目标/注意事项等非 TODO 内容 |
+| 2026-08-07 | 新增消息存储优化 3 项（历史字段完整性、assistant 防丢失、SQL 分页）；编号顺延 |

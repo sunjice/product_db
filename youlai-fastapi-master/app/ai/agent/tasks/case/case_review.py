@@ -258,6 +258,7 @@ class CaseReviewTask(CaseTask):
         output: dict,
         confirm_status: int,
         final_content: str = "",
+        is_core: bool | None = None,
     ) -> None:
         """确认：将 AI 建议的字段值写入用例。
 

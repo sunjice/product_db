@@ -99,6 +99,7 @@ class AgentRunner:
         collected_content = ""
         collected_card: dict | None = None
         tool_call_count = 0
+        tool_names: list[str] = []  # 收集已调用的工具名称（按调用顺序）
 
         try:
             # 用 asyncio.wait_for 包裹，防止无限挂起
@@ -114,14 +115,17 @@ class AgentRunner:
                 elif kind == "on_tool_start":
                     tool_call_count += 1
                     data = event.get("data", {}) or {}
-                    name = data.get("name", "")
+                    # astream_events v2 工具名在 event["name"]；v1 可能在 data["name"]
+                    name = data.get("name") or event.get("name") or ""
                     tool_input = data.get("input", {})
+                    if name:
+                        tool_names.append(name)
                     yield self._sse("tool_start", {"name": name, "args": tool_input})
 
                 elif kind == "on_tool_end":
                     data = event.get("data", {}) or {}
                     output = data.get("output", "")
-                    name = data.get("name", "")
+                    name = data.get("name") or event.get("name") or ""
 
                     # 卡片数据：优先从 ToolMessage.artifact 读取
                     card = self._extract_card(output)
@@ -160,13 +164,18 @@ class AgentRunner:
                 final_draft_type = collected_card.get("draft_type")
                 final_draft_data = collected_card.get("draft_data")
                 final_metadata = collected_card.get("metadata") or {}
+                # 卡片类消息优先用 artifact.content 作为主内容（如 clarify_card 的 title），
+                # agent 文本兜底。确保前端渲染的标题不会丢失。
+                final_content = collected_card.get("content") or collected_content or ""
             else:
                 final_msg_type = "text"
                 final_draft_type = None
                 final_draft_data = None
                 final_metadata = {}
+                final_content = collected_content or ""
 
             final_metadata.update({
+                "tool_names": tool_names,
                 "tool_calls": tool_call_count,
                 "duration_ms": duration_ms,
                 "tokens": {
@@ -179,7 +188,7 @@ class AgentRunner:
             yield self._sse("message", {
                 "role": "assistant",
                 "msg_type": final_msg_type,
-                "content": collected_content or "",
+                "content": final_content,
                 "draft_type": final_draft_type,
                 "draft_data": final_draft_data,
                 "metadata": final_metadata,

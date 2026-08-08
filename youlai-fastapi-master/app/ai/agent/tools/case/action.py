@@ -24,6 +24,7 @@ class CreateTaskArgs(BaseModel):
     """创建异步任务（核心挑选/用例审核/脚本生成）的通用参数。"""
     suite_id: int | None = Field(None, description="模块 ID，不传则用当前页面的模块")
     project_id: int | None = Field(None, description="项目 ID，不传则用当前页面的项目")
+    scope: str | None = Field(None, description="操作范围：'all' 审核整个模块全部用例，'selected' 或留空则审核页面上选中的用例。仅在用户明确要操作整个模块时传 'all'")
 
 
 class CompleteStepsArgs(BaseModel):
@@ -125,10 +126,11 @@ def make_create_core_select_task_tool(ctx: ToolContext) -> StructuredTool:
 def make_create_case_review_task_tool(ctx: ToolContext) -> StructuredTool:
     """用例审核任务。"""
 
-    async def run(suite_id: int | None = None, project_id: int | None = None, **kwargs) -> tuple[str, dict | None]:
+    async def run(suite_id: int | None = None, project_id: int | None = None, scope: str | None = None, **kwargs) -> tuple[str, dict | None]:
         params = {
             "suite_id": suite_id or ctx.suite_id,
             "project_id": project_id or ctx.project_id,
+            "scope": scope,
         }
         return await _run_skill("case_review", params, ctx)
 
@@ -137,6 +139,8 @@ def make_create_case_review_task_tool(ctx: ToolContext) -> StructuredTool:
         description=(
             "审核指定模块下测试用例的质量，检查字段完整性、步骤规范性等。返回确认卡片等用户确认。"
             "当用户说'审核用例'、'检查用例质量'、'评审用例'、'用例写得怎么样'时调用。"
+            "scope 参数：用户明确要求审核'整个模块'、'全部用例'时传 'all'；"
+            "要求审核'选中的'、'这些'时传 'selected'；未明确指定时不传。"
         ),
         coroutine=run,
         args_schema=CreateTaskArgs,

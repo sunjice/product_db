@@ -55,7 +55,7 @@ class CaseContextBuilder(BaseContextBuilder):
         if not parts:
             return ""
 
-        return "\n[当前页面上下文]\n" + "\n".join(parts) + "\n注意：如果用户有选中用例，请优先以选中的用例为操作对象，而不是整个模块。"
+        return "\n[当前页面上下文]\n" + "\n".join(parts) + "\n注意：如果用户有选中用例，可优先作为操作对象。但如果用户明确要求对整个模块操作，以用户意图为准。"
 
     @staticmethod
     async def _get_case_list_in_suite(

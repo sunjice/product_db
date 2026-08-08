@@ -236,7 +236,7 @@ class ChatOrchestrator:
 
         if len(context_lines) > 1:
             prompt += "\n".join(context_lines)
-            prompt += "\n\n注意：如果用户有选中用例（selected_case_ids），请优先以选中的用例为操作对象，而不是整个模块。"
+            prompt += "\n\n注意：如果用户有选中用例（selected_case_ids），可优先作为操作对象。但如果用户明确要求对整个模块操作，以用户意图为准。"
 
         return prompt
 

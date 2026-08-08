@@ -75,6 +75,7 @@ class ScriptGenTask(CaseTask):
         output: dict,
         confirm_status: int,
         final_content: str = "",
+        is_core: bool | None = None,
     ) -> None:
         """确认：将生成的脚本写入脚本库。"""
         script_content = (

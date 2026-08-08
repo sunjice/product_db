@@ -244,8 +244,9 @@ import type {
   CaseReviewDetailVO, FieldSuggestionVO,
 } from "@/api/aitc/task";
 import { importanceLabel, importanceType, scoreTag } from "../constants";
-import { useCaseReview, FIELD_LABEL_MAP, displayVal } from "./composables/useCaseReview";
-import type { TextFieldRow } from "./components/FieldReviewPanel";
+import { useCaseReview, FIELD_LABEL_MAP, displayVal } from "./shared/composables/useCaseReview";
+import FieldReviewPanel from "./shared/components/FieldReviewPanel.vue";
+import type { TextFieldRow } from "./shared/components/FieldReviewPanel.vue";
 
 // ── 项目 ──
 const projectId = ref("");
@@ -396,26 +397,16 @@ const aiSteps = computed(() => stepsSug.value?.suggested || []);
 
 const manualSteps = computed(() => manualValues.steps || []);
 
-// 统计
-const passCount = computed(() => {
-  return (currentDetail.value?.suggestions || []).filter(s => s.conclusion === "pass").length;
-});
-
-const failCount = computed(() => {
-  return (currentDetail.value?.suggestions || []).filter(s => s.conclusion === "fail").length;
-});
-
-const processedCount = computed(() => {
-  return Object.entries(fieldStates).filter(
-    ([k, v]) => v && currentDetail.value?.suggestions?.some(s => s.field_name === k && s.conclusion === "fail")
-  ).length;
-});
-
-const canSubmit = computed(() => {
-  if (!currentDetail.value?.suggestions) return false;
-  const fails = currentDetail.value.suggestions.filter(s => s.conclusion === "fail");
-  return fails.length === 0 || processedCount.value >= fails.length;
-});
+// 统计 — 使用 composable 统一口径
+const failFields = computed(() =>
+  (currentDetail.value?.suggestions || []).filter(s => s.conclusion === "fail")
+);
+const passCount = computed(() =>
+  (currentDetail.value?.suggestions || []).filter(s => s.conclusion === "pass").length
+);
+const { failCount, processedCount, canSubmit } = useFieldStats(() =>
+  failFields.value.map(f => ({ field_name: f.field_name, conclusion: f.conclusion }))
+);
 
 const progressColor = computed(() => {
   if (!failCount.value) return "#67c23a";
